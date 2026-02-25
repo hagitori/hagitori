@@ -1,0 +1,21 @@
+[package]
+name = "hagitori-browser"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hagitori-core.workspace = true
+hagitori-http.workspace = true
+chromiumoxide.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+futures.workspace = true
+url.workspace = true
+base64.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

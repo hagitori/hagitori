@@ -1,0 +1,80 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            name: Windows
+            args: ''
+          - platform: ubuntu-22.04
+            name: Linux
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 35
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libxdo-dev
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Extract version
+        id: version
+        run: echo "number=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.HAGITORI_BOT_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Hagitori ${{ github.ref_name }}'
+          releaseBody: |
+          
+            ## Downloads
+
+            [![Windows](https://img.shields.io/badge/Windows-x64-0078D4?logo=windows&logoColor=white)](https://github.com/hagitori/hagitori/releases/download/${{ github.ref_name }}/Hagitori_${{ steps.version.outputs.number }}_x64-setup.exe)
+            [![Linux DEB](https://img.shields.io/badge/Linux-deb-FCC624?logo=linux&logoColor=black)](https://github.com/hagitori/hagitori/releases/download/${{ github.ref_name }}/hagitori_${{ steps.version.outputs.number }}_amd64.deb)
+            [![Linux RPM](https://img.shields.io/badge/Linux-rpm-FCC624?logo=linux&logoColor=black)](https://github.com/hagitori/hagitori/releases/download/${{ github.ref_name }}/hagitori-${{ steps.version.outputs.number }}-1.x86_64.rpm)
+            [![Linux AppImage](https://img.shields.io/badge/Linux-AppImage-FCC624?logo=linux&logoColor=black)](https://github.com/hagitori/hagitori/releases/download/${{ github.ref_name }}/hagitori_${{ steps.version.outputs.number }}_amd64.AppImage)
+
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

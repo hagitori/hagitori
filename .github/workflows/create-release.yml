@@ -1,0 +1,59 @@
+name: create release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  create-tag:
+    name: Detect version bump & create tag
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.HAGITORI_BOT_TOKEN }}
+          fetch-depth: 0
+
+      - name: Extract version from tauri.conf.json
+        id: version
+        run: |
+          VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
+          TAG="v${VERSION}"
+
+          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+            echo "::error::Could not read version from src-tauri/tauri.conf.json"
+            exit 1
+          fi
+
+          # Check if tag already exists — if it does, the version wasn't bumped
+          if git tag -l "$TAG" | grep -q .; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "### Tag \`$TAG\` already exists, skipping." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "### New version: \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Create and push tag
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          git config user.name "hagitori-bot"
+          git config user.email "hagitori-bot@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Hagitori ${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.HAGITORI_BOT_TOKEN }}
+
+      - name: Summary
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          echo "### Tag \`${{ steps.version.outputs.tag }}\` pushed successfully" >> "$GITHUB_STEP_SUMMARY"
+          echo "The **release** workflow will now build and create a draft release." >> "$GITHUB_STEP_SUMMARY"

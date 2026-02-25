@@ -1,0 +1,19 @@
+[package]
+name = "hagitori-grouper"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hagitori-core.workspace = true
+zip.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+serde.workspace = true
+quick-xml.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+image.workspace = true
+
+[lints]
+workspace = true

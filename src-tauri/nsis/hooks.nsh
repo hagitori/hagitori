@@ -1,0 +1,7 @@
+!define MUI_UNICON "${INSTALLERICON}"
+
+!macro NSIS_HOOK_PREINSTALL
+!macroend
+
+!macro NSIS_HOOK_POSTINSTALL
+!macroend

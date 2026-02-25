@@ -1,0 +1,22 @@
+[package]
+name = "hagitori-download"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hagitori-core.workspace = true
+hagitori-http.workspace = true
+hagitori-browser.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+wreq.workspace = true
+image.workspace = true
+base64.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[lints]
+workspace = true
