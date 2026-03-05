@@ -130,6 +130,7 @@ hagitori-config.workspace = true
 hagitori-extensions.workspace = true
 hagitori-sync.workspace = true
 tauri-plugin-dialog = "2.6.0"
+quick-xml.workspace = true
 lru.workspace = true
 
 [dev-dependencies]

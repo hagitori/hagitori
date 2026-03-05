@@ -72,3 +72,9 @@ pub fn build_comic_info(
         Manga: "Yes".to_string(),
     }
 }
+
+/// serializes a ComicInfo to XML string with declaration header.
+pub fn serialize_comic_info_xml(info: &ComicInfo) -> Option<String> {
+    let body = quick_xml::se::to_string(info).ok()?;
+    Some(format!("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n{body}"))
+}

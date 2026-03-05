@@ -6,6 +6,7 @@ use rquickjs::{
     Array, AsyncContext, AsyncRuntime, CatchResultExt, Ctx, Function, Object, Value,
     promise::MaybePromise,
 };
+
 use tokio::sync::{mpsc, oneshot, Mutex};
 
 use hagitori_core::error::{HagitoriError, Result};
@@ -211,7 +212,7 @@ impl JsWorker {
 // ─── Method calls in the QuickJS context ─────────────────────
 
 /// calls `__extension__.{method}(args...)` in the JS context.
-/// returns the raw Value (may be a Promise   resolved by the worker loop).
+/// returns the raw Value (may be a Promise resolved by the worker loop).
 fn call_method_raw<'js>(
     ctx: &Ctx<'js>,
     method: &str,

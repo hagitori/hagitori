@@ -209,7 +209,7 @@ pub fn register<'js>(ctx: &Ctx<'js>, data: Arc<RuntimeData>) -> rquickjs::Result
     // browser.interceptRequests(url, patterns, options?) -> Promise<Value>
     // Returns array of intercepted requests matching the patterns.
     //
-    // options: { waitTime?: number (default 30) }
+    // options: { waitTime?: number (default 30), headless?: boolean (default false) }
     let data_ir = data.clone();
     browser_obj.set(
         "interceptRequests",
@@ -223,11 +223,15 @@ pub fn register<'js>(ctx: &Ctx<'js>, data: Arc<RuntimeData>) -> rquickjs::Result
                     .and_then(|v| v.as_int().or_else(|| v.as_float().map(|f| f as i32)))
                     .map(|n| n.max(1) as u64)
                     .unwrap_or(30);
+                let headless = opts.0.as_ref()
+                    .and_then(|o| o.get::<_, Value>("headless").ok())
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
 
                 async move {
                     let patterns = patterns?;
 
-                    let browser = get_browser(&data, true).await?;
+                    let browser = get_browser(&data, headless).await?;
                     let pattern_refs: Vec<&str> = patterns.iter().map(|s| s.as_str()).collect();
 
                     let requests = hagitori_browser::intercept_requests(
@@ -248,7 +252,7 @@ pub fn register<'js>(ctx: &Ctx<'js>, data: Arc<RuntimeData>) -> rquickjs::Result
     // browser.interceptResponses(url, patterns, options?) -> Promise<Value>
     // Returns array of intercepted responses matching the patterns.
     //
-    // options: { waitTime?: number (default 30) }
+    // options: { waitTime?: number (default 30), headless?: boolean (default false) }
     let data_iresp = data.clone();
     browser_obj.set(
         "interceptResponses",
@@ -262,11 +266,15 @@ pub fn register<'js>(ctx: &Ctx<'js>, data: Arc<RuntimeData>) -> rquickjs::Result
                     .and_then(|v| v.as_int().or_else(|| v.as_float().map(|f| f as i32)))
                     .map(|n| n.max(1) as u64)
                     .unwrap_or(30);
+                let headless = opts.0.as_ref()
+                    .and_then(|o| o.get::<_, Value>("headless").ok())
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
 
                 async move {
                     let patterns = patterns?;
 
-                    let browser = get_browser(&data, true).await?;
+                    let browser = get_browser(&data, headless).await?;
                     let pattern_refs: Vec<&str> = patterns.iter().map(|s| s.as_str()).collect();
 
                     let responses = hagitori_browser::intercept_responses(
@@ -289,6 +297,7 @@ pub fn register<'js>(ctx: &Ctx<'js>, data: Arc<RuntimeData>) -> rquickjs::Result
     //   requests?: string[],   // URL patterns for requests
     //   responses?: string[],  // URL patterns for responses
     //   waitTime?: number,     // timeout in seconds (default 30)
+    //   headless?: boolean,    // use headless mode (default false)
     // }
     let data_ia = data.clone();
     browser_obj.set(
@@ -302,6 +311,7 @@ pub fn register<'js>(ctx: &Ctx<'js>, data: Arc<RuntimeData>) -> rquickjs::Result
                     let req_val: Value = o.get("requests").unwrap_or_else(|_| Value::new_undefined(o.ctx().clone()));
                     let resp_val: Value = o.get("responses").unwrap_or_else(|_| Value::new_undefined(o.ctx().clone()));
                     let wt: Value = o.get("waitTime").unwrap_or_else(|_| Value::new_undefined(o.ctx().clone()));
+                    let hl: Value = o.get("headless").unwrap_or_else(|_| Value::new_undefined(o.ctx().clone()));
 
                     let req_patterns = extract_string_array(&req_val).unwrap_or_default();
                     let resp_patterns = extract_string_array(&resp_val).unwrap_or_default();
@@ -309,14 +319,15 @@ pub fn register<'js>(ctx: &Ctx<'js>, data: Arc<RuntimeData>) -> rquickjs::Result
                         .or_else(|| wt.as_float().map(|f| f as i32))
                         .map(|n| n.max(1) as u64)
                         .unwrap_or(30);
+                    let headless = hl.as_bool().unwrap_or(false);
 
-                    (req_patterns, resp_patterns, wait_time)
+                    (req_patterns, resp_patterns, wait_time, headless)
                 });
 
                 async move {
-                    let (req_patterns, resp_patterns, wait_time) = parsed.unwrap_or_default();
+                    let (req_patterns, resp_patterns, wait_time, headless) = parsed.unwrap_or_default();
 
-                    let browser = get_browser(&data, true).await?;
+                    let browser = get_browser(&data, headless).await?;
                     let req_refs: Vec<&str> = req_patterns.iter().map(|s| s.as_str()).collect();
                     let resp_refs: Vec<&str> = resp_patterns.iter().map(|s| s.as_str()).collect();
 
@@ -337,6 +348,7 @@ pub fn register<'js>(ctx: &Ctx<'js>, data: Arc<RuntimeData>) -> rquickjs::Result
 
     // browser.getCookies(url) -> Promise<string>
     // returns JSON string of { name: value } cookie map.
+    // always uses headful.
     let data_cookies = data.clone();
     browser_obj.set(
         "getCookies",
@@ -345,7 +357,7 @@ pub fn register<'js>(ctx: &Ctx<'js>, data: Arc<RuntimeData>) -> rquickjs::Result
             Async(move |url: String| {
                 let data = data_cookies.clone();
                 async move {
-                    let browser = get_browser(&data, true).await?;
+                    let browser = get_browser(&data, false).await?;
                     let cookies = browser
                         .get_cookies(&url)
                         .await

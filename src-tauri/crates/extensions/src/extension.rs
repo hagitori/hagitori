@@ -74,20 +74,9 @@ impl JsExtension {
         // call method on worker (async)
         let result = worker.call(function_name, args).await;
 
-        // Auto-close browser after extension execution completes.
-        // CF cookies are already propagated to the HTTP session store,
-        // so the download engine can work independently with its own browser.
-        {
-            let bm = self.runtime.browser_manager();
-            let mut guard = bm.lock().await;
-            if guard.is_some() {
-                tracing::info!(
-                    "auto-closing browser after extension call '{}'",
-                    function_name
-                );
-                *guard = None;
-            }
-        }
+        // browser is not closed here, it persists so that subsequent calls
+        // can reuse the same browser session with its CF cookies intact. 
+        // the browser is closed by the download engine after the entire download sequence finishes.
 
         // return worker to pool (even on failure   it may still be reusable)
         if result.is_ok() {
@@ -106,7 +95,7 @@ impl JsExtension {
             }
         }
 
-        // pool empty   create new worker (async)
+        // pool empty create new worker (async)
         let (script, has_browser, has_crypto) = {
             let meta = self.meta.read().map_err(|e| HagitoriError::extension(format!("meta lock poisoned: {e}")))?;
             let script = self.script.read().map_err(|e| HagitoriError::extension(format!("script lock poisoned: {e}")))?.clone();

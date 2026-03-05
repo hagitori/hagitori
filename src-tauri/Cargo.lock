@@ -1990,6 +1990,7 @@ dependencies = [
  "hagitori-providers",
  "hagitori-sync",
  "lru",
+ "quick-xml 0.39.2",
  "serde",
  "tauri",
  "tauri-build",

@@ -9,7 +9,7 @@ use hagitori_core::entities::{Chapter, DownloadProgress, DownloadStatus};
 use hagitori_download::{DownloadEngine, DownloadEngineConfig};
 use hagitori_grouper::{create_archive, GroupFormat};
 
-use crate::utils::{build_comic_info, infer_iso639_1, CommandResult};
+use crate::utils::{build_comic_info, infer_iso639_1, serialize_comic_info_xml, CommandResult};
 use crate::AppState;
 
 #[expect(clippy::too_many_arguments, reason = "helper needs all context to emit + record")]
@@ -38,6 +38,7 @@ pub async fn download_chapters(
     chapters: Vec<Chapter>,
     source: String,
     manga_name: String,
+    manga_id: String,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
@@ -68,60 +69,52 @@ pub async fn download_chapters(
         state.browser_manager.clone(),
     );
 
+    // build metadata context for ComicInfo.xml:
+    // 1. try fetching fresh details from the provider
+    // 2. fall back to stored details from SQLite library
     let metadata_context = {
-        let maybe_manga_id = {
-            let manga_cache = state.manga_cache.read().await;
-            let provider_cache = state.provider_cache.read().await;
+        let web = state
+            .manga_cache
+            .read()
+            .await
+            .peek(&manga_id)
+            .and_then(|m| m.url.clone());
 
-            manga_cache.iter().find_map(|(manga_id, manga)| {
-                if manga.name != manga_name {
-                    return None;
-                }
-
-                let provider_matches = provider_cache
-                    .peek(manga_id)
-                    .map(|provider_id| provider_id == &source)
-                    .unwrap_or(true);
-
-                if provider_matches {
-                    Some(manga_id.clone())
-                } else {
-                    None
-                }
-            })
-        };
-
-        if let Some(manga_id) = maybe_manga_id {
+        let provider_details = {
             let provider = {
                 let registry = state.registry.read().await;
                 registry.get_provider(&source).cmd()?
             };
             match provider.get_details(&manga_id).await {
-                Ok(details) => {
-                    let web = state
-                        .manga_cache
-                        .read()
-                        .await
-                        .peek(&manga_id)
-                        .and_then(|m| m.url.clone());
-                    Some((details, web, infer_iso639_1(&source)))
-                }
+                Ok(details) => Some(details),
                 Err(e) => {
                     tracing::warn!(
-                        "could not get details for ComicInfo metadata ({}): {}",
+                        "could not get fresh details for ComicInfo ({}): {e}",
                         manga_id,
-                        e
                     );
                     None
                 }
             }
-        } else {
-            tracing::warn!(
-                "could not determine manga_id to generate ComicInfo.xml for '{}'.",
-                manga_name
-            );
-            None
-        }
+        };
+
+        let details = match provider_details {
+            Some(d) => Some(d),
+            None => {
+                // fallback: use stored details from SQLite library
+                match state.library.get_manga(&manga_id) {
+                    Ok(Some(entry)) => {
+                        tracing::info!(
+                            "using stored details from library for ComicInfo ({})",
+                            manga_id,
+                        );
+                        entry.details
+                    }
+                    _ => None,
+                }
+            }
+        };
+
+        details.map(|d| (d, web, infer_iso639_1(&source)))
     };
 
     // pre-fetched pages for the next chapter (populated during the previous iteration).
@@ -221,6 +214,13 @@ pub async fn download_chapters(
         // track the final save path for the completed event
         let mut save_path = chapter_dir.to_string_lossy().to_string();
 
+        // build ComicInfo metadata for this chapter
+        let chapter_metadata = metadata_context
+            .as_ref()
+            .map(|(details, web, iso639_1)| {
+                build_comic_info(details, chapter, web.clone(), iso639_1.clone())
+            });
+
         if let Some(format) = group_format {
             let _ = app.emit(
                 "download-progress",
@@ -242,13 +242,7 @@ pub async fn download_chapters(
             let output_path = manga_dir.join(format!("Cap. {}.{}", pages.chapter_number, ext));
             save_path = output_path.to_string_lossy().to_string();
 
-            let chapter_metadata = metadata_context
-                .as_ref()
-                .map(|(details, web, iso639_1)| {
-                    build_comic_info(details, chapter, web.clone(), iso639_1.clone())
-                });
-
-            // zip crate is synchronous   use spawn_blocking to avoid blocking the runtime
+            // zip crate is synchronous use spawn_blocking to avoid blocking the runtime
             let cbz_chapter_dir = chapter_dir.clone();
             let cbz_output_path = output_path.clone();
             let cbz_metadata = chapter_metadata.clone();
@@ -290,6 +284,14 @@ pub async fn download_chapters(
                         format!("grouping panicked for Ch. {}: {join_err}", pages.chapter_number),
                     );
                     continue;
+                }
+            }
+        } else if let Some(metadata) = &chapter_metadata {
+            // folder mode: write ComicInfo.xml as a standalone file
+            if let Some(xml) = serialize_comic_info_xml(metadata) {
+                let comic_info_path = chapter_dir.join("ComicInfo.xml");
+                if let Err(e) = std::fs::write(&comic_info_path, xml.as_bytes()) {
+                    tracing::warn!("failed to write ComicInfo.xml to {}: {e}", comic_info_path.display());
                 }
             }
         }
