@@ -7,11 +7,14 @@ pub struct MangaDetails {
     pub id: String,
     pub name: String,
     pub cover: Option<String>,
+    #[serde(default)]
     pub source: String,
     pub synopsis: Option<String>,
     pub author: Option<String>,
     pub artist: Option<String>,
+    #[serde(alias = "alt_titles", default)]
     pub alt_titles: Vec<String>,
+    #[serde(default)]
     pub tags: Vec<String>,
     pub status: Option<String>,
 }

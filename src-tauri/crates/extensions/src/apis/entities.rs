@@ -1,36 +1,111 @@
-//! QuickJS entity constructors for Manga, Chapter, Pages, and MangaDetails.
+//! Native rquickjs entity classes for Manga, Chapter, and Pages.
 
-use rquickjs::{Ctx, Value};
+use rquickjs::class::Trace;
+use rquickjs::{Class, Ctx, Object};
 
-/// registers global constructors: Manga(), Chapter(), Pages().
-/// defined as real JS functions to support `new Manga(...)`.
-pub fn register<'js>(ctx: &Ctx<'js>) -> rquickjs::Result<()> {
-    ctx.eval::<Value, _>(r#"
-        function Manga(data) {
-            this.id = data.id;
-            this.name = data.name;
-            this.cover = data.cover ?? null;
-            this.source = "";
-        }
+// ─── Manga ──────────────────────────────────────────────────────────────────
 
-        function Chapter(data) {
-            this.id = data.id;
-            this.number = data.number;
-            this.name = data.name;
-            this.title = data.title ?? null;
-            this.date = data.date ?? null;
-            this.scanlator = data.scanlator ?? null;
-        }
+#[derive(Trace, rquickjs::JsLifetime, serde::Serialize)]
+#[rquickjs::class(rename = "Manga")]
+pub struct JsManga {
+    #[qjs(skip_trace)]
+    pub id: String,
+    #[qjs(skip_trace)]
+    pub name: String,
+    #[qjs(skip_trace)]
+    pub cover: Option<String>,
+    #[qjs(skip_trace)]
+    pub source: String,
+}
 
-        function Pages(data) {
-            this.chapter_id = data.id;
-            this.chapter_number = data.number;
-            this.manga_name = data.name;
-            this.pages = data.urls;
-            this.headers = data.headers ?? null;
-            this.useBrowser = data.useBrowser ?? false;
-        }
-    "#)?;
+#[rquickjs::methods]
+impl JsManga {
+    #[qjs(constructor)]
+    pub fn new(data: Object<'_>) -> rquickjs::Result<Self> {
+        Ok(Self {
+            id: data.get("id")?,
+            name: data.get("name")?,
+            cover: data.get("cover").unwrap_or(None),
+            source: String::new(),
+        })
+    }
+}
 
+// ─── Chapter ────────────────────────────────────────────────────────────────
+
+#[derive(Trace, rquickjs::JsLifetime, serde::Serialize)]
+#[rquickjs::class(rename = "Chapter")]
+pub struct JsChapter {
+    #[qjs(skip_trace)]
+    pub id: String,
+    #[qjs(skip_trace)]
+    pub number: String,
+    #[qjs(skip_trace)]
+    pub name: String,
+    #[qjs(skip_trace)]
+    pub title: Option<String>,
+    #[qjs(skip_trace)]
+    pub date: Option<String>,
+    #[qjs(skip_trace)]
+    pub scanlator: Option<String>,
+}
+
+#[rquickjs::methods]
+impl JsChapter {
+    #[qjs(constructor)]
+    pub fn new(data: Object<'_>) -> rquickjs::Result<Self> {
+        Ok(Self {
+            id: data.get("id")?,
+            number: data.get("number")?,
+            name: data.get("name")?,
+            title: data.get("title").unwrap_or(None),
+            date: data.get("date").unwrap_or(None),
+            scanlator: data.get("scanlator").unwrap_or(None),
+        })
+    }
+}
+
+// ─── Pages ──────────────────────────────────────────────────────────────────
+
+#[derive(Trace, rquickjs::JsLifetime, serde::Serialize)]
+#[rquickjs::class(rename = "Pages")]
+#[serde(rename_all = "camelCase")]
+pub struct JsPages {
+    #[qjs(skip_trace)]
+    pub chapter_id: String,
+    #[qjs(skip_trace)]
+    pub chapter_number: String,
+    #[qjs(skip_trace)]
+    pub manga_name: String,
+    #[qjs(skip_trace)]
+    pub pages: Vec<String>,
+    #[qjs(skip_trace)]
+    pub headers: Option<std::collections::HashMap<String, String>>,
+    #[qjs(skip_trace)]
+    pub use_browser: bool,
+}
+
+#[rquickjs::methods]
+impl JsPages {
+    #[qjs(constructor)]
+    pub fn new(data: Object<'_>) -> rquickjs::Result<Self> {
+        Ok(Self {
+            chapter_id: data.get("id")?,
+            chapter_number: data.get("number")?,
+            manga_name: data.get("name")?,
+            pages: data.get("urls")?,
+            headers: data.get("headers").unwrap_or(None),
+            use_browser: data.get("useBrowser").unwrap_or(false),
+        })
+    }
+}
+
+// ─── Registration ───────────────────────────────────────────────────────────
+
+pub fn register(ctx: &Ctx<'_>) -> rquickjs::Result<()> {
+    let globals = ctx.globals();
+    Class::<JsManga>::define(&globals)?;
+    Class::<JsChapter>::define(&globals)?;
+    Class::<JsPages>::define(&globals)?;
     Ok(())
 }

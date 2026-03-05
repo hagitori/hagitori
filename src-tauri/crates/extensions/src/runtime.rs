@@ -3,9 +3,11 @@
 use std::sync::Arc;
 
 use rquickjs::{
-    Array, AsyncContext, AsyncRuntime, CatchResultExt, Ctx, Function, Object, Value,
+    Array, AsyncContext, AsyncRuntime, CatchResultExt, Class, Ctx, Function, Object, Value,
     promise::MaybePromise,
 };
+
+use crate::apis::entities::{JsChapter, JsManga, JsPages};
 
 use tokio::sync::{mpsc, oneshot, Mutex};
 
@@ -349,6 +351,20 @@ pub(crate) fn js_value_to_json<'js>(
         // skip functions
         if obj.is_function() {
             return Ok(serde_json::Value::Null);
+        }
+
+        // native entity classes -> serialize directly via serde
+        if let Some(cls) = Class::<JsManga>::from_object(obj) {
+            return serde_json::to_value(&*cls.borrow())
+                .map_err(|e| format!("failed to serialize Manga: {e}"));
+        }
+        if let Some(cls) = Class::<JsChapter>::from_object(obj) {
+            return serde_json::to_value(&*cls.borrow())
+                .map_err(|e| format!("failed to serialize Chapter: {e}"));
+        }
+        if let Some(cls) = Class::<JsPages>::from_object(obj) {
+            return serde_json::to_value(&*cls.borrow())
+                .map_err(|e| format!("failed to serialize Pages: {e}"));
         }
 
         let mut map = serde_json::Map::new();

@@ -72,16 +72,6 @@ impl ProviderRegistry {
         self.providers.insert(meta.id.clone(), provider);
     }
 
-    fn get(&self, id: &str) -> Option<&dyn MangaProvider> {
-        self.providers.get(id).map(|p| p.as_ref())
-    }
-
-    fn get_or_err(&self, provider_id: &str) -> Result<&dyn MangaProvider> {
-        self.get(provider_id).ok_or_else(|| {
-            HagitoriError::extension(format!("provider '{}' not found", provider_id))
-        })
-    }
-
     pub fn get_provider(&self, id: &str) -> Result<Arc<dyn MangaProvider>> {
         self.providers
             .get(id)
@@ -104,32 +94,6 @@ impl ProviderRegistry {
         })?;
 
         self.providers.get(provider_id).cloned().ok_or_else(|| {
-            HagitoriError::extension(format!(
-                "provider '{}' registered but not found (internal inconsistency)",
-                provider_id
-            ))
-        })
-    }
-
-    pub fn find_by_url(&self, url: &str) -> Result<&dyn MangaProvider> {
-        let parsed = Url::parse(url).map_err(|e| {
-            HagitoriError::extension(format!("invalid URL '{}': {e}", url))
-        })?;
-
-        let host = parsed
-            .host_str()
-            .ok_or_else(|| HagitoriError::extension(format!("URL has no host: '{}'", url)))?;
-
-        let normalized = Self::normalize_domain(host);
-
-        let provider_id = self.domain_index.get(normalized.as_ref()).ok_or_else(|| {
-            HagitoriError::extension(format!(
-                "no provider found for domain '{}'",
-                normalized
-            ))
-        })?;
-
-        self.providers.get(provider_id).map(|p| p.as_ref()).ok_or_else(|| {
             HagitoriError::extension(format!(
                 "provider '{}' registered but not found (internal inconsistency)",
                 provider_id
@@ -185,7 +149,7 @@ impl ProviderRegistry {
     }
 
     pub fn set_extension_lang(&self, provider_id: &str, lang: &str) -> Result<()> {
-        self.get_or_err(provider_id)?.set_lang(lang);
+        self.get_provider(provider_id)?.set_lang(lang);
         Ok(())
     }
 

@@ -7,6 +7,7 @@ pub struct Manga {
     pub id: String,
     pub name: String,
     pub cover: Option<String>,
+    #[serde(default)]
     pub source: String,
     #[serde(default)]
     pub url: Option<String>,

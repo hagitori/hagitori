@@ -54,13 +54,13 @@ fn register_and_get_provider() {
 
     registry.register(Box::new(provider));
 
-    let found = registry.find_by_url("https://test.com/manga/1");
+    let found = registry.find_provider_by_url("https://test.com/manga/1");
     assert!(found.is_ok(), "registered provider should be found by URL");
     assert_eq!(found.unwrap().meta().name, "TestProvider", "provider name should match");
 }
 
 #[test]
-fn find_by_url_matches_domain() {
+fn find_provider_by_url_matches_domain() {
     let mut registry = ProviderRegistry::new();
     registry.register(Box::new(MockProvider::new(
         "en.manga",
@@ -68,15 +68,15 @@ fn find_by_url_matches_domain() {
         vec!["mangasite.com".into(), "api.mangasite.com".into()],
     )));
 
-    let provider = registry.find_by_url("https://mangasite.com/manga/123").unwrap();
+    let provider = registry.find_provider_by_url("https://mangasite.com/manga/123").unwrap();
     assert_eq!(provider.meta().id, "en.manga", "should find provider by domain");
 
-    let provider = registry.find_by_url("https://api.mangasite.com/v1/manga/123").unwrap();
+    let provider = registry.find_provider_by_url("https://api.mangasite.com/v1/manga/123").unwrap();
     assert_eq!(provider.meta().id, "en.manga", "should find provider by subdomain");
 }
 
 #[test]
-fn find_by_url_normalizes_www() {
+fn find_provider_by_url_normalizes_www() {
     let mut registry = ProviderRegistry::new();
     registry.register(Box::new(MockProvider::new(
         "en.site",
@@ -84,21 +84,21 @@ fn find_by_url_normalizes_www() {
         vec!["example.com".into()],
     )));
 
-    let provider = registry.find_by_url("https://www.example.com/manga/1").unwrap();
+    let provider = registry.find_provider_by_url("https://www.example.com/manga/1").unwrap();
     assert_eq!(provider.meta().id, "en.site", "should normalize www in domain");
 }
 
 #[test]
-fn find_by_url_returns_error_for_unknown_domain() {
+fn find_provider_by_url_returns_error_for_unknown_domain() {
     let registry = ProviderRegistry::new();
-    let result = registry.find_by_url("https://unknown.com/page");
+    let result = registry.find_provider_by_url("https://unknown.com/page");
     assert!(result.is_err(), "unknown domain should return error");
 }
 
 #[test]
-fn find_by_url_returns_error_for_invalid_url() {
+fn find_provider_by_url_returns_error_for_invalid_url() {
     let registry = ProviderRegistry::new();
-    let result = registry.find_by_url("not a valid url");
+    let result = registry.find_provider_by_url("not a valid url");
     assert!(result.is_err(), "invalid URL should return error");
 }
 
@@ -133,13 +133,13 @@ fn remove_provider() {
         vec!["removable.com".into()],
     )));
 
-    let found_before = registry.find_by_url("https://removable.com/manga/1");
+    let found_before = registry.find_provider_by_url("https://removable.com/manga/1");
     assert!(found_before.is_ok(), "provider should be found before removal");
 
     let removed = registry.remove("en.rem");
     assert!(removed.is_some(), "removal should return the provider");
 
-    let found_after = registry.find_by_url("https://removable.com/manga/1");
+    let found_after = registry.find_provider_by_url("https://removable.com/manga/1");
     assert!(found_after.is_err(), "provider should not be found after removal");
 }
 
@@ -191,6 +191,6 @@ function getPages(chapter) {
     let metas = registry.list();
     assert_eq!(metas.len(), 1, "registry should have one extension");
 
-    let found = registry.find_by_url("https://testext.com/manga/1");
+    let found = registry.find_provider_by_url("https://testext.com/manga/1");
     assert!(found.is_ok(), "extension domain should be registered");
 }

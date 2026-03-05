@@ -1,9 +1,10 @@
 //! `MangaProvider` implementation via JavaScript extensions (QuickJS).
 
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use async_trait::async_trait;
-use tokio::sync::Semaphore;
+use tokio::sync::{Mutex, Semaphore};
 
 use hagitori_core::entities::{Chapter, ExtensionMeta, Manga, MangaDetails, Pages};
 use hagitori_core::error::{HagitoriError, Result};
@@ -13,6 +14,7 @@ use crate::manifest::ExtensionManifest;
 use crate::runtime::{JsRuntime, JsWorker};
 
 const MAX_WORKERS: usize = 5;
+const MAX_CONSECUTIVE_FAILURES: u32 = 5;
 
 pub struct JsExtension {
     meta: RwLock<ExtensionMeta>,
@@ -21,6 +23,7 @@ pub struct JsExtension {
     runtime: Arc<JsRuntime>,
     workers: Mutex<Vec<JsWorker>>,
     worker_semaphore: Arc<Semaphore>,
+    consecutive_failures: AtomicU32,
 }
 
 impl JsExtension {
@@ -36,6 +39,7 @@ impl JsExtension {
             runtime,
             workers: Mutex::new(Vec::new()),
             worker_semaphore: Arc::new(Semaphore::new(MAX_WORKERS)),
+            consecutive_failures: AtomicU32::new(0),
         }
     }
 
@@ -63,6 +67,15 @@ impl JsExtension {
         function_name: &str,
         args: Vec<serde_json::Value>,
     ) -> Result<serde_json::Value> {
+        // reject calls after too many consecutive failures
+        let failures = self.consecutive_failures.load(Ordering::Relaxed);
+        if failures >= MAX_CONSECUTIVE_FAILURES {
+            let id = self.meta.read().map(|m| m.id.clone()).unwrap_or_default();
+            return Err(HagitoriError::extension(format!(
+                "extension '{id}' disabled after {failures} consecutive failures"
+            )));
+        }
+
         // limit concurrent workers
         let _permit = self.worker_semaphore.acquire().await.map_err(|_| {
             HagitoriError::extension("worker semaphore closed")
@@ -75,21 +88,25 @@ impl JsExtension {
         let result = worker.call(function_name, args).await;
 
         // browser is not closed here, it persists so that subsequent calls
-        // can reuse the same browser session with its CF cookies intact. 
+        // can reuse the same browser session with its CF cookies intact.
         // the browser is closed by the download engine after the entire download sequence finishes.
 
-        // return worker to pool (even on failure   it may still be reusable)
         if result.is_ok() {
-            self.release_worker(worker);
+            self.consecutive_failures.store(0, Ordering::Relaxed);
+            self.release_worker(worker).await;
+        } else {
+            let count = self.consecutive_failures.fetch_add(1, Ordering::Relaxed) + 1;
+            tracing::warn!(
+                "worker discarded after failure ({count}/{MAX_CONSECUTIVE_FAILURES})"
+            );
         }
-        // on failure, the worker is dropped and the task ends
 
         result
     }
 
     async fn acquire_worker(&self) -> Result<JsWorker> {
         {
-            let mut pool = self.workers.lock().map_err(|e| HagitoriError::extension(format!("mutex poisoned: {e}")))?;
+            let mut pool = self.workers.lock().await;
             if let Some(worker) = pool.pop() {
                 return Ok(worker);
             }
@@ -112,9 +129,8 @@ impl JsExtension {
         .await
     }
 
-    fn release_worker(&self, worker: JsWorker) {
-        let mut pool = self.workers.lock().expect("workers lock poisoned");
-        pool.push(worker);
+    async fn release_worker(&self, worker: JsWorker) {
+        self.workers.lock().await.push(worker);
     }
 }
 
@@ -176,201 +192,35 @@ impl MangaProvider for JsExtension {
         };
         *self.script.write().expect("script lock poisoned") = new_script;
         // invalidate all workers so they get recreated with the new script/lang
-        if let Ok(mut pool) = self.workers.lock() {
-            pool.clear();
-        } else {
-            tracing::error!("workers lock poisoned during set_lang   workers not cleared");
-        }
+        self.workers.blocking_lock().clear();
+        self.consecutive_failures.store(0, Ordering::Relaxed);
     }
 }
 
 fn json_to_manga(val: &serde_json::Value, source: &str) -> Result<Manga> {
-    let obj = val
-        .as_object()
-        .ok_or_else(|| HagitoriError::extension("getManga did not return an object"))?;
-
-    let id = obj
-        .get("id")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| HagitoriError::extension("manga: 'id' missing or not a string"))?;
-
-    let name = obj
-        .get("name")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| HagitoriError::extension("manga: 'name' missing or not a string"))?;
-
-    let mut manga = Manga::new(id, name, source);
-
-    if let Some(cover) = obj.get("cover").and_then(|v| v.as_str()) {
-        manga = manga.with_cover(cover);
-    }
-
+    let mut manga: Manga = serde_json::from_value(val.clone()).map_err(|e| {
+        HagitoriError::extension(format!("getManga: failed to deserialize: {e}"))
+    })?;
+    manga.source = source.to_string();
     Ok(manga)
 }
 
 fn json_to_chapters(val: &serde_json::Value) -> Result<Vec<Chapter>> {
-    let arr = val
-        .as_array()
-        .ok_or_else(|| HagitoriError::extension("getChapters did not return an array"))?;
-
-    let mut chapters = Vec::with_capacity(arr.len());
-
-    for (i, item) in arr.iter().enumerate() {
-        let obj = item.as_object().ok_or_else(|| {
-            HagitoriError::extension(format!("chapter [{i}] is not an object"))
-        })?;
-
-        let id = obj
-            .get("id")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| HagitoriError::extension(format!("chapter [{i}]: 'id' missing")))?;
-
-        let number = obj
-            .get("number")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                HagitoriError::extension(format!("chapter [{i}]: 'number' missing"))
-            })?;
-
-        let name = obj
-            .get("name")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                HagitoriError::extension(format!("chapter [{i}]: 'name' missing"))
-            })?;
-
-        let mut chapter = Chapter::new(id, number, name);
-
-        if let Some(title) = obj.get("title").and_then(|v| v.as_str()) {
-            chapter = chapter.with_title(title);
-        }
-
-        if let Some(date) = obj.get("date").and_then(|v| v.as_str()) {
-            chapter = chapter.with_date(date);
-        }
-
-        if let Some(scanlator) = obj.get("scanlator").and_then(|v| v.as_str()) {
-            chapter = chapter.with_scanlator(scanlator);
-        }
-
-        chapters.push(chapter);
-    }
-
-    Ok(chapters)
+    serde_json::from_value(val.clone()).map_err(|e| {
+        HagitoriError::extension(format!("getChapters: failed to deserialize: {e}"))
+    })
 }
 
 fn json_to_pages(val: &serde_json::Value) -> Result<Pages> {
-    let obj = val
-        .as_object()
-        .ok_or_else(|| HagitoriError::extension("getPages did not return an object"))?;
-
-    let chapter_id = obj
-        .get("chapter_id")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| HagitoriError::extension("pages: 'chapter_id' missing"))?;
-
-    let chapter_number = obj
-        .get("chapter_number")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| HagitoriError::extension("pages: 'chapter_number' missing"))?;
-
-    let manga_name = obj
-        .get("manga_name")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| HagitoriError::extension("pages: 'manga_name' missing"))?;
-
-    let pages_arr = obj
-        .get("pages")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| HagitoriError::extension("pages: 'pages' missing or not an array"))?;
-
-    let pages: Vec<String> = pages_arr
-        .iter()
-        .enumerate()
-        .map(|(i, v)| {
-            v.as_str()
-                .map(|s| s.to_string())
-                .ok_or_else(|| HagitoriError::extension(format!("pages[{i}] is not a string")))
-        })
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-
-    let mut result = Pages::new(chapter_id, chapter_number, manga_name, pages);
-
-    if let Some(headers_obj) = obj.get("headers").and_then(|v| v.as_object()) {
-        let headers: std::collections::HashMap<String, String> = headers_obj
-            .iter()
-            .map(|(k, v)| {
-                let val = match v {
-                    serde_json::Value::String(s) => s.clone(),
-                    other => other.to_string(),
-                };
-                (k.clone(), val)
-            })
-            .collect();
-        if !headers.is_empty() {
-            result = result.with_headers(headers);
-        }
-    }
-
-    if let Some(ub) = obj.get("useBrowser").and_then(|v| v.as_bool()) {
-        result.use_browser = ub;
-    }
-
-    Ok(result)
+    serde_json::from_value(val.clone()).map_err(|e| {
+        HagitoriError::extension(format!("getPages: failed to deserialize: {e}"))
+    })
 }
 
 fn json_to_details(val: &serde_json::Value, source: &str) -> Result<MangaDetails> {
-    let obj = val
-        .as_object()
-        .ok_or_else(|| HagitoriError::extension("getDetails did not return an object"))?;
-
-    let id = obj
-        .get("id")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| HagitoriError::extension("details: 'id' missing or not a string"))?;
-
-    let name = obj
-        .get("name")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| HagitoriError::extension("details: 'name' missing or not a string"))?;
-
-    let mut details = MangaDetails::new(id, name, source);
-
-    if let Some(cover) = obj.get("cover").and_then(|v| v.as_str()) {
-        details = details.with_cover(cover);
-    }
-
-    if let Some(synopsis) = obj.get("synopsis").and_then(|v| v.as_str()) {
-        details = details.with_synopsis(synopsis);
-    }
-
-    if let Some(author) = obj.get("author").and_then(|v| v.as_str()) {
-        details = details.with_author(author);
-    }
-
-    if let Some(artist) = obj.get("artist").and_then(|v| v.as_str()) {
-        details = details.with_artist(artist);
-    }
-
-    if let Some(status) = obj.get("status").and_then(|v| v.as_str()) {
-        details = details.with_status(status);
-    }
-
-    if let Some(alt_arr) = obj.get("alt_titles").and_then(|v| v.as_array()) {
-        let titles: Vec<String> = alt_arr
-            .iter()
-            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-            .collect();
-        details = details.with_alt_titles(titles);
-    }
-
-    if let Some(tags_arr) = obj.get("tags").and_then(|v| v.as_array()) {
-        let tags: Vec<String> = tags_arr
-            .iter()
-            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-            .collect();
-        details = details.with_tags(tags);
-    }
-
+    let mut details: MangaDetails = serde_json::from_value(val.clone()).map_err(|e| {
+        HagitoriError::extension(format!("getDetails: failed to deserialize: {e}"))
+    })?;
+    details.source = source.to_string();
     Ok(details)
 }
