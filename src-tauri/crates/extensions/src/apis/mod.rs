@@ -21,11 +21,12 @@ pub fn register_all<'js>(
     data: &Arc<RuntimeData>,
     requires_browser: bool,
     requires_crypto: bool,
+    allowed_domains: Arc<Vec<String>>,
 ) -> std::result::Result<(), String> {
     // always-available APIs
     utils::register(ctx).map_err(|e| format!("utils: {e}"))?;
     entities::register(ctx).map_err(|e| format!("entities: {e}"))?;
-    http::register(ctx, data.clone()).map_err(|e| format!("http: {e}"))?;
+    http::register(ctx, data.clone(), allowed_domains).map_err(|e| format!("http: {e}"))?;
     html::register(ctx).map_err(|e| format!("html: {e}"))?;
     cookies::register(ctx, data.clone()).map_err(|e| format!("cookies: {e}"))?;
     session::register(ctx, data.clone()).map_err(|e| format!("session: {e}"))?;

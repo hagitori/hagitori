@@ -1,12 +1,21 @@
 //! Utility API registration (console, globals, timers) for the QuickJS runtime.
 
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicI32, Ordering},
+};
+use std::collections::HashMap;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use rquickjs::{Ctx, Function, Object, Value, Array};
 use rquickjs::prelude::{This, Rest, Coerced, Opt, Async};
+use tokio::sync::Mutex;
 
 static NEXT_TIMER_ID: AtomicI32 = AtomicI32::new(1);
+
+// shared map of interval cancellation flags
+static INTERVAL_CANCELS: std::sync::LazyLock<Mutex<HashMap<i32, Arc<AtomicBool>>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// registers console, globals (`atob`, `btoa`, `setTimeout`, etc.) into the JS context.
 pub fn register<'js>(ctx: &Ctx<'js>) -> rquickjs::Result<()> {
@@ -96,8 +105,29 @@ fn register_globals<'js>(ctx: &Ctx<'js>) -> rquickjs::Result<()> {
         Function::new(ctx.clone(), Async(sleep_impl))?,
     )?;
 
+    // setInterval(fn, ms) -> id
+    globals.set(
+        "setInterval",
+        Function::new(ctx.clone(), Async(set_interval_impl))?,
+    )?;
+
+    // clearInterval(id)
+    globals.set(
+        "clearInterval",
+        Function::new(ctx.clone(), Async(clear_interval_impl))?,
+    )?;
+
     // URLSearchParams(init?) simplified stub 
     register_url_search_params(ctx)?;
+
+    // AbortController / AbortSignal
+    register_abort_controller(ctx)?;
+
+    // TextEncoder / TextDecoder
+    register_text_encoder_decoder(ctx)?;
+
+    // URL class
+    register_url_class(ctx)?;
 
     Ok(())
 }
@@ -302,5 +332,203 @@ async fn set_timeout_impl<'js>(callback: Function<'js>, ms: Opt<u32>) -> rquickj
 
 async fn sleep_impl(ms: u32) -> rquickjs::Result<()> {
     tokio::time::sleep(std::time::Duration::from_millis(ms as u64)).await;
+    Ok(())
+}
+
+// spawns a recurring timer, returns an id
+async fn set_interval_impl<'js>(callback: Function<'js>, ms: Opt<u32>) -> rquickjs::Result<i32> {
+    let id = NEXT_TIMER_ID.fetch_add(1, Ordering::Relaxed);
+    let ms = ms.0.unwrap_or(0).max(1) as u64;
+    let cancel = Arc::new(AtomicBool::new(false));
+    INTERVAL_CANCELS.lock().await.insert(id, cancel.clone());
+
+    let ctx = callback.ctx().clone();
+    let cb = callback.clone();
+
+    // schedule the recurring execution as a deferred job
+    ctx.spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+            if cancel.load(Ordering::Relaxed) {
+                break;
+            }
+            if cb.call::<_, Value>(()).is_err() {
+                break;
+            }
+        }
+    });
+
+    Ok(id)
+}
+
+async fn clear_interval_impl(id: i32) -> rquickjs::Result<()> {
+    if let Some(cancel) = INTERVAL_CANCELS.lock().await.remove(&id) {
+        cancel.store(true, Ordering::Relaxed);
+    }
+    Ok(())
+}
+
+// ─── AbortController / AbortSignal ──────────────────────────
+
+fn register_abort_controller<'js>(ctx: &Ctx<'js>) -> rquickjs::Result<()> {
+    let globals = ctx.globals();
+
+    globals.set(
+        "AbortController",
+        Function::new(ctx.clone(), |ctx: Ctx<'js>| -> rquickjs::Result<Object<'js>> {
+            let signal = Object::new(ctx.clone())?;
+            signal.set("aborted", false)?;
+            signal.set("reason", Value::new_undefined(ctx.clone()))?;
+
+            let controller = Object::new(ctx.clone())?;
+            controller.set("signal", signal)?;
+
+            let ctrl_ref = controller.clone();
+            controller.set(
+                "abort",
+                Function::new(ctx.clone(), move |ctx: Ctx<'js>, reason: Opt<Value<'js>>| -> rquickjs::Result<()> {
+                    let signal: Object = ctrl_ref.get("signal")?;
+                    signal.set("aborted", true)?;
+                    let reason_val = reason.0.unwrap_or_else(|| {
+                        rquickjs::String::from_str(ctx.clone(), "AbortError")
+                            .map(Value::from)
+                            .unwrap_or_else(|_| Value::new_undefined(ctx.clone()))
+                    });
+                    signal.set("reason", reason_val)?;
+                    Ok(())
+                })?,
+            )?;
+
+            Ok(controller)
+        })?,
+    )?;
+
+    Ok(())
+}
+
+// ─── TextEncoder / TextDecoder ───────────────────────────────
+
+fn register_text_encoder_decoder<'js>(ctx: &Ctx<'js>) -> rquickjs::Result<()> {
+    let globals = ctx.globals();
+
+    // TextEncoder: encode(string) -> Array<number>
+    globals.set(
+        "TextEncoder",
+        Function::new(ctx.clone(), |ctx: Ctx<'js>| -> rquickjs::Result<Object<'js>> {
+            let encoder = Object::new(ctx.clone())?;
+            encoder.set("encoding", "utf-8")?;
+            encoder.set(
+                "encode",
+                Function::new(ctx.clone(), |ctx: Ctx<'js>, input: Opt<String>| -> rquickjs::Result<Array<'js>> {
+                    let s = input.0.unwrap_or_default();
+                    let bytes = s.as_bytes();
+                    let arr = Array::new(ctx.clone())?;
+                    for (i, &b) in bytes.iter().enumerate() {
+                        arr.set(i, b as u32)?;
+                    }
+                    Ok(arr)
+                })?,
+            )?;
+            Ok(encoder)
+        })?,
+    )?;
+
+    // TextDecoder: decode(array) -> string
+    globals.set(
+        "TextDecoder",
+        Function::new(ctx.clone(), |ctx: Ctx<'js>, _encoding: Opt<String>| -> rquickjs::Result<Object<'js>> {
+            let decoder = Object::new(ctx.clone())?;
+            decoder.set("encoding", "utf-8")?;
+            decoder.set(
+                "decode",
+                Function::new(ctx.clone(), |_ctx: Ctx<'js>, input: Opt<Value<'js>>| -> rquickjs::Result<String> {
+                    let Some(val) = input.0 else {
+                        return Ok(String::new());
+                    };
+                    let Some(arr) = val.as_array() else {
+                        return Err(rquickjs::Error::new_from_js_message(
+                            "value",
+                            "array",
+                            "TextDecoder.decode expects an array-like input",
+                        ));
+                    };
+                    let mut bytes = Vec::with_capacity(arr.len());
+                    for i in 0..arr.len() {
+                        let b: u32 = arr.get(i)?;
+                        bytes.push(b as u8);
+                    }
+                    String::from_utf8(bytes).map_err(|e| {
+                        rquickjs::Error::new_from_js_message("bytes", "string", &format!("TextDecoder: invalid UTF-8: {e}"))
+                    })
+                })?,
+            )?;
+            Ok(decoder)
+        })?,
+    )?;
+
+    Ok(())
+}
+
+// ─── URL class ───────────────────────────────────────────────
+
+fn register_url_class<'js>(ctx: &Ctx<'js>) -> rquickjs::Result<()> {
+    let globals = ctx.globals();
+    let globals_inner = globals.clone();
+
+    globals.set(
+        "URL",
+        Function::new(ctx.clone(), move |ctx: Ctx<'js>, input: String, base: Opt<String>| -> rquickjs::Result<Object<'js>> {
+            let parsed = if let Some(base_str) = base.0 {
+                let base_url = url::Url::parse(&base_str).map_err(|e| {
+                    rquickjs::Error::new_from_js_message("string", "URL", &format!("Invalid base URL: {e}"))
+                })?;
+                base_url.join(&input).map_err(|e| {
+                    rquickjs::Error::new_from_js_message("string", "URL", &format!("Invalid URL: {e}"))
+                })?
+            } else {
+                url::Url::parse(&input).map_err(|e| {
+                    rquickjs::Error::new_from_js_message("string", "URL", &format!("Invalid URL: {e}"))
+                })?
+            };
+
+            let obj = Object::new(ctx.clone())?;
+            obj.set("href", parsed.as_str())?;
+            obj.set("protocol", parsed.scheme().to_string() + ":")?;
+            obj.set("hostname", parsed.host_str().unwrap_or(""))?;
+            obj.set("port", parsed.port().map(|p| p.to_string()).unwrap_or_default())?;
+            obj.set(
+                "host",
+                match parsed.port() {
+                    Some(p) => format!("{}:{}", parsed.host_str().unwrap_or(""), p),
+                    None => parsed.host_str().unwrap_or("").to_string(),
+                },
+            )?;
+            obj.set("pathname", parsed.path())?;
+            obj.set("search", if parsed.query().is_some() { format!("?{}", parsed.query().unwrap_or("")) } else { String::new() })?;
+            obj.set("hash", if parsed.fragment().is_some() { format!("#{}", parsed.fragment().unwrap_or("")) } else { String::new() })?;
+            obj.set("origin", parsed.origin().ascii_serialization())?;
+            obj.set("username", parsed.username())?;
+            obj.set("password", parsed.password().unwrap_or(""))?;
+
+            // searchParams as URLSearchParams-like object
+            let search_str = parsed.query().unwrap_or("").to_string();
+            let usp_ctor: Function = globals_inner.get("URLSearchParams")?;
+            let search_params: Value = usp_ctor.call((search_str,))?;
+            obj.set("searchParams", search_params)?;
+
+            // toString() -> href
+            let obj_ref = obj.clone();
+            obj.set(
+                "toString",
+                Function::new(ctx.clone(), move || -> rquickjs::Result<String> {
+                    let href: String = obj_ref.get("href")?;
+                    Ok(href)
+                })?,
+            )?;
+
+            Ok(obj)
+        })?,
+    )?;
+
     Ok(())
 }

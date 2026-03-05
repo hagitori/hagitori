@@ -19,6 +19,7 @@ pub struct JsManga {
 }
 
 #[rquickjs::methods]
+#[allow(clippy::needless_pass_by_value)]
 impl JsManga {
     #[qjs(constructor)]
     pub fn new(data: Object<'_>) -> rquickjs::Result<Self> {
@@ -51,6 +52,7 @@ pub struct JsChapter {
 }
 
 #[rquickjs::methods]
+#[allow(clippy::needless_pass_by_value)]
 impl JsChapter {
     #[qjs(constructor)]
     pub fn new(data: Object<'_>) -> rquickjs::Result<Self> {
@@ -86,6 +88,7 @@ pub struct JsPages {
 }
 
 #[rquickjs::methods]
+#[allow(clippy::needless_pass_by_value)]
 impl JsPages {
     #[qjs(constructor)]
     pub fn new(data: Object<'_>) -> rquickjs::Result<Self> {

@@ -88,7 +88,7 @@ impl JsExtension {
         let result = worker.call(function_name, args).await;
 
         // browser is not closed here, it persists so that subsequent calls
-        // can reuse the same browser session with its CF cookies intact.
+        // can reuse the same browser session with its CF cookies intact. 
         // the browser is closed by the download engine after the entire download sequence finishes.
 
         if result.is_ok() {
@@ -113,18 +113,20 @@ impl JsExtension {
         }
 
         // pool empty create new worker (async)
-        let (script, has_browser, has_crypto) = {
+        let (script, has_browser, has_crypto, domains) = {
             let meta = self.meta.read().map_err(|e| HagitoriError::extension(format!("meta lock poisoned: {e}")))?;
             let script = self.script.read().map_err(|e| HagitoriError::extension(format!("script lock poisoned: {e}")))?.clone();
             let has_browser = meta.features.iter().any(|f| f == "browser");
             let has_crypto = meta.features.iter().any(|f| f == "crypto");
-            (script, has_browser, has_crypto)
+            let domains = Arc::new(meta.domains.clone());
+            (script, has_browser, has_crypto, domains)
         };
         JsWorker::spawn(
             script,
             self.runtime.to_runtime_data(),
             has_browser,
             has_crypto,
+            domains,
         )
         .await
     }

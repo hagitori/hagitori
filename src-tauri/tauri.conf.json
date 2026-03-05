@@ -66,8 +66,7 @@
         "languages": [
           "English",
           "PortugueseBR"
-        ],
-        "installerHooks": "nsis/hooks.nsh"
+        ]
       }
     }
   }

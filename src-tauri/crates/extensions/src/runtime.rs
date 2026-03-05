@@ -1,6 +1,9 @@
 //! async QuickJS runtime with worker pool for extension script execution.
 
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 use rquickjs::{
     Array, AsyncContext, AsyncRuntime, CatchResultExt, Class, Ctx, Function, Object, Value,
@@ -80,17 +83,22 @@ pub(crate) struct JsWorker {
     tx: mpsc::UnboundedSender<WorkerCmd>,
 }
 
+const CALL_TIMEOUT_MS: u64 = 30_000;
+
 impl JsWorker {
     pub async fn spawn(
         script: Arc<String>,
         runtime_data: Arc<RuntimeData>,
         requires_browser: bool,
         requires_crypto: bool,
+        allowed_domains: Arc<Vec<String>>,
     ) -> Result<Self> {
         let (tx, mut rx) = mpsc::unbounded_channel();
         let (init_tx, init_rx) = oneshot::channel();
+        let deadline_epoch = Arc::new(AtomicU64::new(0));
 
         tokio::spawn(async move {
+
             // create async QuickJS runtime and context
             let rt = match AsyncRuntime::new() {
                 Ok(rt) => rt,
@@ -101,6 +109,50 @@ impl JsWorker {
                     return;
                 }
             };
+
+            // abort scripts running longer than timeout per call
+            // set initial deadline for script evaluation
+            {
+                let init_deadline = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64
+                    + 60_000;
+                deadline_epoch.store(init_deadline, Ordering::Relaxed);
+            }
+            {
+                let deadline = Arc::clone(&deadline_epoch);
+                rt.set_interrupt_handler(Some(Box::new(move || {
+                    let limit = deadline.load(Ordering::Relaxed);
+                    if limit == 0 {
+                        return false;
+                    }
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as u64;
+                    now > limit
+                })))
+                .await;
+            }
+
+            // log unhandled promise rejections
+            rt.set_host_promise_rejection_tracker(Some(Box::new(
+                |_ctx, _promise, reason, is_handled| {
+                    if !is_handled {
+                        let msg = reason
+                            .as_string()
+                            .and_then(|s| s.to_string().ok())
+                            .unwrap_or_else(|| format!("{reason:?}"));
+                        tracing::warn!(target: "extension", "Unhandled promise rejection: {msg}");
+                    }
+                },
+            )))
+            .await;
+
+            // SEC-04: memory limit — 64 MB per worker
+            rt.set_memory_limit(64 * 1024 * 1024).await;
+            rt.set_max_stack_size(2 * 1024 * 1024).await;
 
             let ctx = match AsyncContext::full(&rt).await {
                 Ok(ctx) => ctx,
@@ -121,6 +173,7 @@ impl JsWorker {
                         &runtime_data,
                         requires_browser,
                         requires_crypto,
+                        allowed_domains.clone(),
                     )
                     .map_err(|e| format!("failed to register JS APIs: {e}"))?;
 
@@ -151,6 +204,13 @@ impl JsWorker {
                         args,
                         reply,
                     } => {
+                        // reset deadline for this call
+                        let new_deadline = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as u64
+                            + CALL_TIMEOUT_MS;
+                        deadline_epoch.store(new_deadline, Ordering::Relaxed);
                         // uses async_with! to support Promise resolution
                         let result: std::result::Result<serde_json::Value, String> =
                             rquickjs::async_with!(ctx => |ctx| {

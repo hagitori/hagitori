@@ -16,6 +16,7 @@ pub struct JsDocument {
 }
 
 #[rquickjs::methods]
+#[allow(clippy::needless_pass_by_value)]
 impl JsDocument {
     /// select(css) -> Element[]
     pub fn select<'js>(&self, ctx: Ctx<'js>, selector_str: String) -> rquickjs::Result<Array<'js>> {

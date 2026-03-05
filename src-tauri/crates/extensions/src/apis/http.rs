@@ -19,7 +19,8 @@ use crate::runtime::RuntimeData;
 #[rquickjs::class(rename = "FetchResponse")]
 pub struct FetchResponse {
     status_val: i32,
-    body: String,
+    #[qjs(skip_trace)]
+    body_bytes: Vec<u8>,
     headers_map: HashMap<String, String>,
 }
 
@@ -36,20 +37,20 @@ impl FetchResponse {
     pub fn headers<'js>(&self, ctx: Ctx<'js>) -> rquickjs::Result<Object<'js>> {
         let obj = Object::new(ctx)?;
         for (k, v) in &self.headers_map {
-            obj.set::<&str, String>(k.as_str(), v.clone())?;
+            obj.set(k.as_str(), v.as_str())?;
         }
         Ok(obj)
     }
 
-    /// response.text() -> String (full body)
+    /// response.text() -> String (UTF-8 lossy)
     pub fn text(&self) -> String {
-        self.body.clone()
+        String::from_utf8_lossy(&self.body_bytes).into_owned()
     }
 
     /// response.json() -> JS value parsed from body
     pub fn json<'js>(&self, ctx: Ctx<'js>) -> rquickjs::Result<Value<'js>> {
         let parsed: serde_json::Value =
-            serde_json::from_str(&self.body).map_err(|e| {
+            serde_json::from_slice(&self.body_bytes).map_err(|e| {
                 rquickjs::Error::new_from_js_message(
                     "string",
                     "json",
@@ -63,7 +64,7 @@ impl FetchResponse {
 
     /// response.bytes() -> Array<number>
     pub fn bytes(&self) -> Vec<i32> {
-        self.body.as_bytes().iter().map(|&b| b as i32).collect()
+        self.body_bytes.iter().map(|&b| b as i32).collect()
     }
 }
 
@@ -139,16 +140,16 @@ fn extract_response_meta(resp: &wreq::Response) -> (u16, HashMap<String, String>
     (status, headers)
 }
 
-/// extracts status, body text, and headers from an HTTP response in one step.
+/// extracts status, body bytes, and headers from an HTTP response in one step.
 async fn finalize_response(
     resp: wreq::Response,
-) -> std::result::Result<(u16, String, HashMap<String, String>), String> {
+) -> std::result::Result<(u16, Vec<u8>, HashMap<String, String>), String> {
     let (status, headers) = extract_response_meta(&resp);
-    let body = resp
-        .text()
+    let body_bytes = resp
+        .bytes()
         .await
         .map_err(|e| format!("failed to read response body: {e}"))?;
-    Ok((status, body, headers))
+    Ok((status, body_bytes.to_vec(), headers))
 }
 
 /// executes the actual HTTP request (async). Supports GET & POST
@@ -156,7 +157,7 @@ async fn execute_request(
     data: &RuntimeData,
     url: &str,
     opts: &FetchOptions,
-) -> std::result::Result<(u16, String, HashMap<String, String>), String> {
+) -> std::result::Result<(u16, Vec<u8>, HashMap<String, String>), String> {
     tracing::debug!(
         url = url,
         method = opts.method.as_str(),
@@ -251,11 +252,11 @@ async fn execute_request(
     };
 
     match &result {
-        Ok((status, body, _)) => {
+        Ok((status, body_bytes, _)) => {
             tracing::info!(
                 url = url,
                 status = *status,
-                body_len = body.len(),
+                body_len = body_bytes.len(),
                 "fetch() completed"
             );
         }
@@ -267,7 +268,7 @@ async fn execute_request(
     result
 }
 
-pub fn register<'js>(ctx: &Ctx<'js>, data: Arc<RuntimeData>) -> rquickjs::Result<()> {
+pub fn register<'js>(ctx: &Ctx<'js>, data: Arc<RuntimeData>, allowed_domains: Arc<Vec<String>>) -> rquickjs::Result<()> {
     let globals = ctx.globals();
 
     // register FetchResponse class prototype (without exposing constructor to JS)
@@ -280,24 +281,28 @@ pub fn register<'js>(ctx: &Ctx<'js>, data: Arc<RuntimeData>) -> rquickjs::Result
             ctx.clone(),
             Async(move |url: String, opts: Opt<Object<'_>>| {
                 let data = data.clone();
+                let allowed = allowed_domains.clone();
 
                 // extract options synchronously (before the async block)
                 let parsed = parse_fetch_options(&opts);
 
                 async move {
+                    // validate URL domain against allowed list
+                    validate_domain(&url, &allowed)?;
+
                     let opts = parsed.map_err(|e| {
                         rquickjs::Error::new_from_js_message("fetch", "options", &format!("{e}"))
                     })?;
 
                     // execute HTTP request
-                    let (status, response_body, response_headers) =
+                    let (status, response_bytes, response_headers) =
                         execute_request(&data, &url, &opts).await.map_err(|e| {
                             rquickjs::Error::new_from_js_message("fetch", "response", &e)
                         })?;
 
                     Ok::<_, rquickjs::Error>(FetchResponse {
                         status_val: status as i32,
-                        body: response_body,
+                        body_bytes: response_bytes,
                         headers_map: response_headers,
                     })
                 }
@@ -306,4 +311,37 @@ pub fn register<'js>(ctx: &Ctx<'js>, data: Arc<RuntimeData>) -> rquickjs::Result
     )?;
 
     Ok(())
+}
+
+/// validates that the URL's domain is in the extension's allowed domain list.
+fn validate_domain(url: &str, allowed_domains: &[String]) -> rquickjs::Result<()> {
+    let parsed = url::Url::parse(url).map_err(|e| {
+        rquickjs::Error::new_from_js_message("fetch", "url", &format!("invalid URL '{url}': {e}"))
+    })?;
+
+    let host = parsed.host_str().ok_or_else(|| {
+        rquickjs::Error::new_from_js_message("fetch", "url", &format!("URL has no host: '{url}'"))
+    })?;
+
+    let host_lower = host.to_ascii_lowercase();
+    let host_clean = host_lower.strip_prefix("www.").unwrap_or(&host_lower);
+
+    for domain in allowed_domains {
+        let domain_lower = domain.to_ascii_lowercase();
+        let domain_clean = domain_lower.strip_prefix("www.").unwrap_or(&domain_lower);
+
+        // exact match or subdomain match
+        if host_clean == domain_clean || host_clean.ends_with(&format!(".{domain_clean}")) {
+            return Ok(());
+        }
+    }
+
+    Err(rquickjs::Error::new_from_js_message(
+        "fetch",
+        "security",
+        &format!(
+            "domain '{host}' is not in allowed domains list. Declared domains: [{}]",
+            allowed_domains.join(", ")
+        ),
+    ))
 }
