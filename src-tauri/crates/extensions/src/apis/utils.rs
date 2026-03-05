@@ -1,8 +1,12 @@
 //! Utility API registration (console, globals, timers) for the QuickJS runtime.
 
+use std::sync::atomic::{AtomicI32, Ordering};
+
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use rquickjs::{Ctx, Function, Object, Value, Array};
 use rquickjs::prelude::{This, Rest, Coerced, Opt, Async};
+
+static NEXT_TIMER_ID: AtomicI32 = AtomicI32::new(1);
 
 /// registers console, globals (`atob`, `btoa`, `setTimeout`, etc.) into the JS context.
 pub fn register<'js>(ctx: &Ctx<'js>) -> rquickjs::Result<()> {
@@ -83,11 +87,8 @@ fn register_globals<'js>(ctx: &Ctx<'js>) -> rquickjs::Result<()> {
         Function::new(ctx.clone(), Async(set_timeout_impl))?,
     )?;
 
-    // clearTimeout
-    globals.set("clearTimeout", Function::new(ctx.clone(), || {})?)?;
-
-    // clearInterval
-    globals.set("clearInterval", Function::new(ctx.clone(), || {})?)?;
+    // clearTimeout: no-op (QuickJS runs single-threaded therefore timer cancellation not supported)
+    globals.set("clearTimeout", Function::new(ctx.clone(), |_id: Opt<i32>| {})?)?;
 
     // sleep(ms) -> Promise (async uses tokio::time::sleep)
     globals.set(
@@ -290,12 +291,13 @@ fn serialize_params(params: &[(String, String)]) -> String {
 // ─── Named async functions (avoids lifetime issues in closures with edition 2024) ───
 
 async fn set_timeout_impl<'js>(callback: Function<'js>, ms: Opt<u32>) -> rquickjs::Result<i32> {
+    let id = NEXT_TIMER_ID.fetch_add(1, Ordering::Relaxed);
     let ms = ms.0.unwrap_or(0);
     if ms > 0 {
         tokio::time::sleep(std::time::Duration::from_millis(ms as u64)).await;
     }
     callback.call::<_, Value>(())?;
-    Ok(0)
+    Ok(id)
 }
 
 async fn sleep_impl(ms: u32) -> rquickjs::Result<()> {

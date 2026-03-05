@@ -492,7 +492,7 @@ pub fn register_stub<'js>(ctx: &Ctx<'js>) -> rquickjs::Result<()> {
         )?;
     }
 
-    browser_obj.set("close", Function::new(ctx.clone(), || {})?)?;
+    browser_obj.set("close", Function::new(ctx.clone(), Async(|| async { Ok::<_, rquickjs::Error>(()) }))?)?;
 
     globals.set("browser", browser_obj)?;
     Ok(())
