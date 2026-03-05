@@ -29,9 +29,9 @@ export default function ExtensionManga() {
     navigate(`/manga/${encodeURIComponent(mangaId)}`);
   };
 
-  const handleRemove = (e: React.MouseEvent, mangaId: string) => {
+  const handleRemove = async (e: React.MouseEvent, mangaId: string) => {
     e.stopPropagation();
-    removeFromLibrary(mangaId);
+    await removeFromLibrary(mangaId);
   };
 
   return (

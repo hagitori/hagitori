@@ -7,6 +7,8 @@ import type {
   ExtensionCatalog,
   ExtensionUpdateInfo,
   InstalledExtension,
+  LibraryEntry,
+  SourceMeta,
 } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -33,15 +35,63 @@ export async function getDetails(mangaId: string, source: string): Promise<Manga
   return invoke("get_details", { mangaId, source });
 }
 
-export async function cacheCoverImage(mangaId: string, url: string): Promise<string> {
-  return invoke("cache_cover_image", { mangaId, url });
-}
-
 export async function setExtensionLang(
   extensionId: string,
   lang: string,
 ): Promise<void> {
   return invoke("set_extension_lang", { extensionId, lang });
+}
+
+// ---------------------------------------------------------------------------
+// Library
+// ---------------------------------------------------------------------------
+
+export async function libraryList(): Promise<LibraryEntry[]> {
+  return invoke("library_list");
+}
+
+export async function libraryGet(mangaId: string): Promise<LibraryEntry | null> {
+  return invoke("library_get", { mangaId });
+}
+
+export async function libraryAdd(manga: Manga, chapters: Chapter[]): Promise<void> {
+  return invoke("library_add", { manga, chapters });
+}
+
+export async function libraryRemove(mangaId: string): Promise<void> {
+  return invoke("library_remove", { mangaId });
+}
+
+export async function libraryUpdateChapters(mangaId: string, chapters: Chapter[]): Promise<void> {
+  return invoke("library_update_chapters", { mangaId, chapters });
+}
+
+export async function libraryUpdateDetails(mangaId: string, details: MangaDetails): Promise<void> {
+  return invoke("library_update_details", { mangaId, details });
+}
+
+export async function libraryUpdateCover(mangaId: string, cover: string): Promise<void> {
+  return invoke("library_update_cover", { mangaId, cover });
+}
+
+export async function librarySetSourceMeta(
+  sourceId: string,
+  name?: string,
+  supportsDetails?: boolean,
+): Promise<void> {
+  return invoke("library_set_source_meta", { sourceId, name: name ?? null, supportsDetails: supportsDetails ?? null });
+}
+
+export async function libraryGetSourceMeta(): Promise<Record<string, SourceMeta>> {
+  return invoke("library_get_source_meta");
+}
+
+export async function librarySetExtensionLang(extensionId: string, lang: string): Promise<void> {
+  return invoke("library_set_extension_lang", { extensionId, lang });
+}
+
+export async function libraryGetExtensionLangs(): Promise<Record<string, string>> {
+  return invoke("library_get_extension_langs");
 }
 
 // ---------------------------------------------------------------------------
@@ -66,14 +116,6 @@ export async function setConfig(key: string, value: string): Promise<void> {
 
 export async function getDownloadPath(): Promise<string> {
   return invoke("get_download_path");
-}
-
-// ---------------------------------------------------------------------------
-// Proxy
-// ---------------------------------------------------------------------------
-
-export async function proxyImage(url: string): Promise<string> {
-  return invoke("proxy_image", { url });
 }
 
 // ---------------------------------------------------------------------------

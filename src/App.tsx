@@ -3,7 +3,7 @@ import { lazy, Suspense, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useSettingsStore } from "./stores/settings-store";
 import { autoUpdateExtensions } from "./lib/tauri";
-import { migrateCoversToDisk } from "./stores/library-store";
+import { useLibraryStore, migrateFromLocalStorage } from "./stores/library-store";
 import Layout from "./components/ui/Layout";
 import Home from "./pages/Home";
 
@@ -29,10 +29,11 @@ function App() {
   // auto-update extension catalog (only if enabled in settings)
   useEffect(() => {
     async function startup() {
-      // migrate base64 covers to disk (one-time migration)
-      migrateCoversToDisk().catch((err) =>
-        console.warn("[cover-migration]", err),
-      );
+      // migrate localStorage data to SQLite
+      await migrateFromLocalStorage();
+
+      // load library from SQLite
+      await useLibraryStore.getState().loadLibrary();
 
       const { loadAutoUpdateExtensions } =
         useSettingsStore.getState();

@@ -41,14 +41,14 @@ export default function Search() {
         chapters = [];
       }
 
-      addToLibrary(manga, chapters);
+      await addToLibrary(manga, chapters);
 
       try {
         const extensions = await listExtensions();
         const ext = extensions.find((e) => e.id === manga.source);
         if (ext) {
-          setSourceName(manga.source, ext.name);
-          setSourceSupportsDetails(manga.source, ext.supportsDetails);
+          await setSourceName(manga.source, ext.name);
+          await setSourceSupportsDetails(manga.source, ext.supportsDetails);
         }
       } catch {
       }

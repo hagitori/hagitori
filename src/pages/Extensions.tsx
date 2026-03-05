@@ -63,7 +63,7 @@ export default function Extensions() {
   const handleLangChange = async (extensionId: string, lang: string) => {
     try {
       await setExtensionLang(extensionId, lang);
-      storeSetExtensionLang(extensionId, lang);
+      await storeSetExtensionLang(extensionId, lang);
     } catch (err) {
       toast.error(String(err));
     }

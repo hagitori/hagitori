@@ -4,8 +4,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { useTranslation } from "@/hooks/useTranslation";
-import { useLibraryStore } from "@/stores/library-store";
-import { getCoverUrl, cacheCoverForManga } from "@/stores/library-store";
+import { useLibraryStore, getCoverUrl } from "@/stores/library-store";
 import { useDownloadStore } from "@/stores/download-store";
 import { getChapters, getDetails, downloadChapters, getManga, listExtensions } from "@/lib/tauri";
 import { Badge } from "@/components/ui";
@@ -46,24 +45,8 @@ export default function MangaDetail() {
   const extensionCheckedRef = useRef<string>("");
   const detailsFetchedRef = useRef<string>("");
 
-  // prefer persisted disk path (manga.cover) over remote URL (details.cover)
   const rawCover = details?.cover || manga?.cover || undefined;
   const coverSrc = getCoverUrl(rawCover);
-
-  // download HTTP covers to disk so they load from asset:// next time
-  const coverCachedRef = useRef<string>("");
-  useEffect(() => {
-    if (!rawCover || !rawCover.startsWith("http") || !mangaId) return;
-    if (coverCachedRef.current === rawCover) return;
-    coverCachedRef.current = rawCover;
-    cacheCoverForManga(mangaId, rawCover);
-  }, [rawCover, mangaId]);
-
-  const handleCoverError = () => {
-    if (rawCover?.startsWith("http") && mangaId) {
-      cacheCoverForManga(mangaId, rawCover);
-    }
-  };
 
   // update supportsDetails based on current extension (may have changed)
   useEffect(() => {
@@ -146,7 +129,7 @@ export default function MangaDetail() {
         return;
       }
 
-      updateChapters(manga.id, newChapters);
+      await updateChapters(manga.id, newChapters);
       setChapters(newChapters.map((ch) => ({ ...ch, selected: false })));
 
       // then update details (sequential avoids 2 simultaneous browsers)
@@ -154,7 +137,7 @@ export default function MangaDetail() {
         try {
           const d = await getDetails(manga.id, manga.source);
           setDetails(d);
-          updateDetails(manga.id, d);
+          await updateDetails(manga.id, d);
         } catch {
         }
       }
@@ -256,7 +239,6 @@ export default function MangaDetail() {
         details={details}
         coverSrc={coverSrc}
         isUpdating={isUpdating}
-        onCoverError={handleCoverError}
         onUpdate={handleUpdate}
       />
 

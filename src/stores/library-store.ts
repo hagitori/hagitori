@@ -1,156 +1,184 @@
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { cacheCoverImage } from "@/lib/tauri";
-import type { Manga, Chapter, MangaDetails } from "../types";
+import {
+  libraryList,
+  libraryAdd,
+  libraryRemove,
+  libraryUpdateChapters,
+  libraryUpdateDetails,
+  librarySetSourceMeta,
+  libraryGetSourceMeta,
+  librarySetExtensionLang,
+  libraryGetExtensionLangs,
+} from "@/lib/tauri";
+import type { Manga, Chapter, MangaDetails, LibraryEntry } from "../types";
 
-export interface LibraryEntry {
-  manga: Manga;
-  chapters: Chapter[];
-  details?: MangaDetails;
-  updatedAt: number; // last update timestamp
-}
+export type { LibraryEntry };
 
 interface LibraryStore {
   entries: Record<string, LibraryEntry>;
-
   sourceNames: Record<string, string>;
-
   sourceSupportsDetails: Record<string, boolean>;
-
   extensionLangs: Record<string, string>;
+  isLoaded: boolean;
 
-  addToLibrary: (manga: Manga, chapters: Chapter[]) => void;
-
-  updateChapters: (mangaId: string, chapters: Chapter[]) => void;
-
-  removeFromLibrary: (mangaId: string) => void;
-
-  setSourceName: (sourceId: string, displayName: string) => void;
-
-  setSourceSupportsDetails: (sourceId: string, supports: boolean) => void;
-
-  updateDetails: (mangaId: string, details: MangaDetails) => void;
-
-  updateCover: (mangaId: string, coverDataUri: string) => void;
-
-  setExtensionLang: (extensionId: string, lang: string) => void;
+  loadLibrary: () => Promise<void>;
+  addToLibrary: (manga: Manga, chapters: Chapter[]) => Promise<void>;
+  updateChapters: (mangaId: string, chapters: Chapter[]) => Promise<void>;
+  removeFromLibrary: (mangaId: string) => Promise<void>;
+  setSourceName: (sourceId: string, displayName: string) => Promise<void>;
+  setSourceSupportsDetails: (sourceId: string, supports: boolean) => Promise<void>;
+  updateDetails: (mangaId: string, details: MangaDetails) => Promise<void>;
+  setExtensionLang: (extensionId: string, lang: string) => Promise<void>;
 }
 
 export const useLibraryStore = create<LibraryStore>()(
-  persist(
-    immer((set) => ({
-      entries: {},
-      sourceNames: {},
-      sourceSupportsDetails: {},
-      extensionLangs: {},
+  immer((set) => ({
+    entries: {},
+    sourceNames: {},
+    sourceSupportsDetails: {},
+    extensionLangs: {},
+    isLoaded: false,
 
-      addToLibrary: (manga, chapters) =>
-        set((state) => {
-          state.entries[manga.id] = {
-            manga,
-            chapters,
-            updatedAt: Date.now(),
-          };
-        }),
+    loadLibrary: async () => {
+      const [entries, sourceMeta, extensionLangs] = await Promise.all([
+        libraryList(),
+        libraryGetSourceMeta(),
+        libraryGetExtensionLangs(),
+      ]);
 
-      updateChapters: (mangaId, chapters) =>
-        set((state) => {
-          const existing = state.entries[mangaId];
-          if (!existing) return;
-          existing.chapters = chapters;
-          existing.updatedAt = Date.now();
-        }),
+      const sourceNames: Record<string, string> = {};
+      const sourceSupportsDetails: Record<string, boolean> = {};
+      for (const [id, meta] of Object.entries(sourceMeta)) {
+        if (meta.displayName) sourceNames[id] = meta.displayName;
+        sourceSupportsDetails[id] = meta.supportsDetails;
+      }
 
-      removeFromLibrary: (mangaId) =>
-        set((state) => {
-          delete state.entries[mangaId];
-        }),
-
-      setSourceName: (sourceId, displayName) =>
-        set((state) => {
-          state.sourceNames[sourceId] = displayName;
-        }),
-
-      setSourceSupportsDetails: (sourceId, supports) =>
-        set((state) => {
-          state.sourceSupportsDetails[sourceId] = supports;
-        }),
-
-      updateDetails: (mangaId, details) =>
-        set((state) => {
-          const existing = state.entries[mangaId];
-          if (!existing) return;
-          existing.details = details;
-        }),
-
-      updateCover: (mangaId, coverDataUri) =>
-        set((state) => {
-          const existing = state.entries[mangaId];
-          if (!existing) return;
-          existing.manga.cover = coverDataUri;
-          if (existing.details) {
-            existing.details.cover = coverDataUri;
-          }
-        }),
-
-      setExtensionLang: (extensionId, lang) =>
-        set((state) => {
-          state.extensionLangs[extensionId] = lang;
-        }),
-    })),
-    {
-      name: "hagitori-library",
-      storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ entries: state.entries, sourceNames: state.sourceNames, sourceSupportsDetails: state.sourceSupportsDetails, extensionLangs: state.extensionLangs }),
+      set((state) => {
+        state.entries = {};
+        for (const entry of entries) {
+          state.entries[entry.manga.id] = entry;
+        }
+        state.sourceNames = sourceNames;
+        state.sourceSupportsDetails = sourceSupportsDetails;
+        state.extensionLangs = extensionLangs;
+        state.isLoaded = true;
+      });
     },
-  ),
+
+    addToLibrary: async (manga, chapters) => {
+      await libraryAdd(manga, chapters);
+      set((state) => {
+        state.entries[manga.id] = { manga, chapters, updatedAt: Date.now() };
+      });
+    },
+
+    updateChapters: async (mangaId, chapters) => {
+      await libraryUpdateChapters(mangaId, chapters);
+      set((state) => {
+        const existing = state.entries[mangaId];
+        if (!existing) return;
+        existing.chapters = chapters;
+        existing.updatedAt = Date.now();
+      });
+    },
+
+    removeFromLibrary: async (mangaId) => {
+      await libraryRemove(mangaId);
+      set((state) => {
+        delete state.entries[mangaId];
+      });
+    },
+
+    setSourceName: async (sourceId, displayName) => {
+      await librarySetSourceMeta(sourceId, displayName);
+      set((state) => {
+        state.sourceNames[sourceId] = displayName;
+      });
+    },
+
+    setSourceSupportsDetails: async (sourceId, supports) => {
+      await librarySetSourceMeta(sourceId, undefined, supports);
+      set((state) => {
+        state.sourceSupportsDetails[sourceId] = supports;
+      });
+    },
+
+    updateDetails: async (mangaId, details) => {
+      await libraryUpdateDetails(mangaId, details);
+      set((state) => {
+        const existing = state.entries[mangaId];
+        if (!existing) return;
+        existing.details = details;
+      });
+    },
+
+    setExtensionLang: async (extensionId, lang) => {
+      await librarySetExtensionLang(extensionId, lang);
+      set((state) => {
+        state.extensionLangs[extensionId] = lang;
+      });
+    },
+  })),
 );
 
 /**
  * Returns a display URL for a stored cover value.
- * - data: URI -> returned as-is (legacy base64, still displayable)
  * - http(s) URL -> returned as-is (direct display)
  * - filesystem path -> converted to asset:// URL via convertFileSrc
- * - undefined -> undefined
  */
 export function getCoverUrl(cover?: string): string | undefined {
   if (!cover) return undefined;
-  if (cover.startsWith("data:")) return cover;   // legacy base64   still works for display
-  if (cover.startsWith("http")) return cover;    // remote URL   display directly
-  return convertFileSrc(cover);                   // disk path -> asset:// URL
+  if (cover.startsWith("http")) return cover;
+  return convertFileSrc(cover);
 }
 
 /**
- * downloads cover from URL, writes to disk,
- * and updates the library store with the resulting disk path.
- * silently fails caller should not await unless needed.
+ * migrate existing localStorage data to SQLite.
+ * reads from the old zustand persist key and imports each entry.
  */
-export async function cacheCoverForManga(mangaId: string, coverUrl: string): Promise<void> {
+export async function migrateFromLocalStorage(): Promise<void> {
+  const raw = localStorage.getItem("hagitori-library");
+  if (!raw) return;
+
   try {
-    const path = await cacheCoverImage(mangaId, coverUrl);
-    useLibraryStore.getState().updateCover(mangaId, path);
-  } catch {
-    // keep original coverUrl, onError fallback in UI handles display
-  }
-}
+    const data = JSON.parse(raw);
+    const entries = data?.state?.entries;
+    if (!entries || typeof entries !== "object") return;
 
-/**
- * for library entries that still have a data: URI cover but have a
- * coverUrl (original remote URL), re-download to disk to eliminate base64 from localStorage.
- * called once at app startup.
- */
-export async function migrateCoversToDisk(): Promise<void> {
-  const entries = useLibraryStore.getState().entries;
-  for (const [mangaId, entry] of Object.entries(entries)) {
-    const cover = entry.manga.cover;
-    // cover is a data: URI migrate to disk if coverUrl available
-    if (cover && cover.startsWith("data:")) {
-      const coverUrl = entry.manga.coverUrl;
-      if (coverUrl) {
-        await cacheCoverForManga(mangaId, coverUrl);
+    for (const [, entry] of Object.entries<any>(entries)) {
+      if (!entry?.manga?.id) continue;
+      await libraryAdd(entry.manga, entry.chapters ?? []);
+      if (entry.details) {
+        await libraryUpdateDetails(entry.manga.id, entry.details);
       }
     }
+
+    const sourceNames = data?.state?.sourceNames;
+    if (sourceNames && typeof sourceNames === "object") {
+      for (const [id, name] of Object.entries<string>(sourceNames)) {
+        await librarySetSourceMeta(id, name);
+      }
+    }
+
+    const sourceSupportsDetails = data?.state?.sourceSupportsDetails;
+    if (sourceSupportsDetails && typeof sourceSupportsDetails === "object") {
+      for (const [id, supports] of Object.entries<boolean>(sourceSupportsDetails)) {
+        await librarySetSourceMeta(id, undefined, supports);
+      }
+    }
+
+    const extensionLangs = data?.state?.extensionLangs;
+    if (extensionLangs && typeof extensionLangs === "object") {
+      for (const [id, lang] of Object.entries<string>(extensionLangs)) {
+        await librarySetExtensionLang(id, lang);
+      }
+    }
+
+    localStorage.removeItem("hagitori-library");
+    console.info("[migration] library migrated from localStorage to SQLite");
+  } catch (err) {
+    console.warn("[migration] failed to migrate localStorage:", err);
   }
 }

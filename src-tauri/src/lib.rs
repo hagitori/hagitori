@@ -11,7 +11,7 @@ use tokio::sync::{Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
 
 use hagitori_browser::{set_default_profile_dir, BrowserManager};
-use hagitori_config::{ConfigManager, DownloadHistory, ExtensionRegistry, SessionStore};
+use hagitori_config::{ConfigManager, DownloadHistory, ExtensionRegistry, LibraryManager, SessionStore};
 use hagitori_core::entities::Manga;
 use hagitori_http::HttpClient;
 use hagitori_providers::ProviderRegistry;
@@ -33,6 +33,7 @@ pub struct AppState {
     pub(crate) ext_registry: Arc<ExtensionRegistry>,
     pub(crate) download_history: Arc<DownloadHistory>,
     pub(crate) session_store: Arc<SessionStore>,
+    pub(crate) library: Arc<LibraryManager>,
     pub(crate) manga_cache: RwLock<lru::LruCache<String, Manga>>,
     pub(crate) provider_cache: RwLock<lru::LruCache<String, String>>,
     pub(crate) cancel_token: Mutex<CancellationToken>,
@@ -47,6 +48,7 @@ impl AppState {
         ext_registry: Arc<ExtensionRegistry>,
         download_history: Arc<DownloadHistory>,
         session_store: Arc<SessionStore>,
+        library: LibraryManager,
         browser_manager: Arc<tokio::sync::Mutex<Option<Arc<BrowserManager>>>>,
     ) -> Self {
         Self {
@@ -56,6 +58,7 @@ impl AppState {
             ext_registry,
             download_history,
             session_store,
+            library: Arc::new(library),
             manga_cache: RwLock::new(lru::LruCache::new(CACHE_SIZE)),
             provider_cache: RwLock::new(lru::LruCache::new(CACHE_SIZE)),
             cancel_token: Mutex::new(CancellationToken::new()),
@@ -191,6 +194,9 @@ pub fn run() {
                 Err(e) => tracing::warn!("failed to load persisted sessions: {e}"),
             }
 
+            let library = LibraryManager::new(&data_dir)
+                .map_err(|e| format!("failed to open LibraryManager: {e}"))?;
+
             let app_state = AppState::new(
                 registry,
                 config,
@@ -198,6 +204,7 @@ pub fn run() {
                 ext_registry,
                 download_history,
                 session_store,
+                library,
                 browser_manager,
             );
             app.manage(app_state);
@@ -208,8 +215,6 @@ pub fn run() {
             commands::manga::get_manga,
             commands::manga::get_chapters,
             commands::manga::get_details,
-            commands::manga::proxy_image,
-            commands::manga::cache_cover_image,
             commands::manga::set_extension_lang,
             commands::manga::list_extensions,
             commands::download::download_chapters,
@@ -217,6 +222,17 @@ pub fn run() {
             commands::config::get_config,
             commands::config::set_config,
             commands::config::get_download_path,
+            commands::library::library_list,
+            commands::library::library_get,
+            commands::library::library_add,
+            commands::library::library_remove,
+            commands::library::library_update_chapters,
+            commands::library::library_update_details,
+            commands::library::library_update_cover,
+            commands::library::library_set_source_meta,
+            commands::library::library_get_source_meta,
+            commands::library::library_set_extension_lang,
+            commands::library::library_get_extension_langs,
             sync_commands::fetch_catalog,
             sync_commands::check_extension_updates,
             sync_commands::install_catalog_extension,

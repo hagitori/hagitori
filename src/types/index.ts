@@ -1,8 +1,7 @@
 export interface Manga {
   id: string;
   name: string;
-  coverUrl?: string;   // remote URL from extension
-  cover?: string;      // local cached path (asset:// compatible) or base64 fallback
+  cover?: string;
   source: string;
   url?: string;
 }
@@ -60,6 +59,18 @@ export interface MangaDetails {
 // ---------------------------------------------------------------------------
 // sync / catalog
 // ---------------------------------------------------------------------------
+
+export interface LibraryEntry {
+  manga: Manga;
+  chapters: Chapter[];
+  details?: MangaDetails;
+  updatedAt: number;
+}
+
+export interface SourceMeta {
+  displayName?: string;
+  supportsDetails: boolean;
+}
 
 export interface ExtensionCatalog {
   version: number;

@@ -88,6 +88,54 @@ CREATE TABLE IF NOT EXISTS extension_meta (
 ",
 )];
 
+const LIBRARY_MIGRATIONS: &[Migration] = &[(
+    1,
+    "
+CREATE TABLE IF NOT EXISTS manga (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    cover       TEXT,
+    source      TEXT NOT NULL,
+    url         TEXT,
+    added_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS chapters (
+    id          TEXT NOT NULL,
+    manga_id    TEXT NOT NULL REFERENCES manga(id) ON DELETE CASCADE,
+    number      TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    title       TEXT,
+    date        TEXT,
+    scanlator   TEXT,
+    PRIMARY KEY (id, manga_id)
+);
+
+CREATE TABLE IF NOT EXISTS manga_details (
+    manga_id    TEXT PRIMARY KEY REFERENCES manga(id) ON DELETE CASCADE,
+    cover       TEXT,
+    synopsis    TEXT,
+    author      TEXT,
+    artist      TEXT,
+    alt_titles  TEXT,
+    tags        TEXT,
+    status      TEXT
+);
+
+CREATE TABLE IF NOT EXISTS source_meta (
+    source_id           TEXT PRIMARY KEY,
+    display_name        TEXT,
+    supports_details    INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS extension_langs (
+    extension_id    TEXT PRIMARY KEY,
+    lang            TEXT NOT NULL
+);
+",
+)];
+
 // ---------------------------------------------------------------------------
 // Migration runner
 // ---------------------------------------------------------------------------
@@ -177,4 +225,11 @@ pub fn open_history_db(base_dir: &Path) -> Result<Connection> {
 
 pub fn open_extensions_db(base_dir: &Path) -> Result<Connection> {
     open_database(&base_dir.join("extensions.db"), EXTENSIONS_MIGRATIONS)
+}
+
+pub fn open_library_db(base_dir: &Path) -> Result<Connection> {
+    let conn = open_database(&base_dir.join("library.db"), LIBRARY_MIGRATIONS)?;
+    conn.pragma_update(None, "foreign_keys", "ON")
+        .map_err(|e| HagitoriError::config(format!("failed to enable foreign_keys: {e}")))?;
+    Ok(conn)
 }

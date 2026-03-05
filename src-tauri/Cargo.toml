@@ -83,8 +83,8 @@ tempfile = "3.26.0"
 lru = "0.16.3"
 quick-xml = { version = "0.39.2", features = ["serialize"] }
 
-tauri = { version = "2.10.2", features = ["image-png"] }
-tauri-build = { version = "2.5.5", features = [] }
+tauri = { version = "2.10.3", features = ["image-png", "protocol-asset"] }
+tauri-build = { version = "2.5.6", features = [] }
 tauri-plugin-opener = "2.5.3"
 
 hagitori-core = { path = "crates/core" }

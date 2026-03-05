@@ -11,7 +11,6 @@ export interface MangaHeaderProps {
   details: MangaDetails | null;
   coverSrc: string | undefined;
   isUpdating: boolean;
-  onCoverError: () => void;
   onUpdate: () => void;
 }
 
@@ -20,7 +19,6 @@ export function MangaHeader({
   details,
   coverSrc,
   isUpdating,
-  onCoverError,
   onUpdate,
 }: MangaHeaderProps) {
   const { t } = useTranslation();
@@ -32,7 +30,6 @@ export function MangaHeader({
           src={coverSrc}
           alt={manga.name}
           className="h-[180px] w-[130px] shrink-0 rounded-xl border border-border object-cover"
-          onError={onCoverError}
         />
       ) : (
         <div className="flex h-[180px] w-[130px] shrink-0 items-center justify-center rounded-xl border border-border bg-muted">
