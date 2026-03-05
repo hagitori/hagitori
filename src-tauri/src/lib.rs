@@ -41,6 +41,7 @@ pub struct AppState {
 }
 
 impl AppState {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         registry: ProviderRegistry,
         config: ConfigManager,
@@ -83,6 +84,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let http_client = Arc::new(
                 HttpClient::new().map_err(|e| format!("failed to create HttpClient: {e}"))?,

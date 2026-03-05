@@ -59,7 +59,7 @@ export default function Downloads() {
     };
 
     try {
-      await downloadChapters([chapter], info.source, info.mangaName);
+      await downloadChapters([chapter], info.source, info.mangaName, info.mangaId);
     } catch (err) {
       console.error("Retry failed:", err);
       toast.error(t("downloads.retryFailed"));
@@ -104,7 +104,7 @@ export default function Downloads() {
       }));
 
       try {
-        await downloadChapters(chapters, group[0].source, group[0].mangaName);
+        await downloadChapters(chapters, group[0].source, group[0].mangaName, group[0].mangaId);
       } catch (err) {
         console.error("Retry all failed:", err);
         toast.error(t("downloads.retryFailed"));

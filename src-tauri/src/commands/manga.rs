@@ -78,18 +78,18 @@ pub async fn get_manga(
     }
 
     // cache cover image to disk if it's a remote URL
-    if let Some(cover_url) = &manga.cover {
-        if cover_url.starts_with("http") {
-            let cache_dir = app
-                .path()
-                .app_cache_dir()
-                .map_err(|e| format!("failed to get app_cache_dir: {e}"))?;
-            let covers_dir = cache_dir.join("covers");
-            match cache_cover_to_disk(&state.http_client, &covers_dir, &manga.id, cover_url).await
-            {
-                Ok(path) => manga.cover = Some(path),
-                Err(e) => tracing::warn!("failed to cache cover for {}: {e}", manga.id),
-            }
+    if let Some(cover_url) = &manga.cover
+        && cover_url.starts_with("http")
+    {
+        let cache_dir = app
+            .path()
+            .app_cache_dir()
+            .map_err(|e| format!("failed to get app_cache_dir: {e}"))?;
+        let covers_dir = cache_dir.join("covers");
+        match cache_cover_to_disk(&state.http_client, &covers_dir, &manga.id, cover_url).await
+        {
+            Ok(path) => manga.cover = Some(path),
+            Err(e) => tracing::warn!("failed to cache cover for {}: {e}", manga.id),
         }
     }
 
@@ -163,18 +163,18 @@ pub async fn get_details(
         .cmd()?;
 
     // cache cover image to disk if it's a remote URL
-    if let Some(cover_url) = &details.cover {
-        if cover_url.starts_with("http") {
-            let cache_dir = app
-                .path()
-                .app_cache_dir()
-                .map_err(|e| format!("failed to get app_cache_dir: {e}"))?;
-            let covers_dir = cache_dir.join("covers");
-            match cache_cover_to_disk(&state.http_client, &covers_dir, &manga_id, cover_url).await
-            {
-                Ok(path) => details.cover = Some(path),
-                Err(e) => tracing::warn!("failed to cache details cover for {manga_id}: {e}"),
-            }
+    if let Some(cover_url) = &details.cover
+        && cover_url.starts_with("http")
+    {
+        let cache_dir = app
+            .path()
+            .app_cache_dir()
+            .map_err(|e| format!("failed to get app_cache_dir: {e}"))?;
+        let covers_dir = cache_dir.join("covers");
+        match cache_cover_to_disk(&state.http_client, &covers_dir, &manga_id, cover_url).await
+        {
+            Ok(path) => details.cover = Some(path),
+            Err(e) => tracing::warn!("failed to cache details cover for {manga_id}: {e}"),
         }
     }
 

@@ -194,6 +194,7 @@ export default function MangaDetail() {
       });
       saveRetryInfo({
         chapterId: ch.id,
+        mangaId: manga.id,
         mangaName: manga.name,
         chapterNumber: ch.number,
         chapterName: ch.name,
@@ -205,7 +206,7 @@ export default function MangaDetail() {
     navigate("/downloads");
 
     try {
-      await downloadChapters(selected, manga.source, manga.name);
+      await downloadChapters(selected, manga.source, manga.name, manga.id);
     } catch (err) {
       console.error("Download failed:", err);
     }

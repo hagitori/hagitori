@@ -23,8 +23,8 @@ export async function getChapters(mangaId: string, source: string): Promise<Chap
   return invoke("get_chapters", { mangaId, source });
 }
 
-export async function downloadChapters(chapters: Chapter[], source: string, mangaName: string): Promise<void> {
-  return invoke("download_chapters", { chapters, source, mangaName });
+export async function downloadChapters(chapters: Chapter[], source: string, mangaName: string, mangaId: string): Promise<void> {
+  return invoke("download_chapters", { chapters, source, mangaName, mangaId });
 }
 
 export async function cancelDownload(): Promise<void> {

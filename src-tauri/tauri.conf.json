@@ -22,13 +22,27 @@
       "assetProtocol": {
         "enable": true,
         "scope": {
-          "allow": ["$APPCACHE/covers/**"]
+          "allow": [
+            "$APPCACHE/covers/**"
+          ]
         }
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMxMzMyQkM3REY4NUVDMDkKUldRSjdJWGZ4eXN6d2NDT2EyMWRWTi9vY05HaFlqb2lGckpGeU1WSy9XMmt3N1A3bHZXUnduckgK",
+      "endpoints": [
+        "https://github.com/hagitori/hagitori/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
       }
     }
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "copyright": "© Hagitori",
     "targets": [
       "nsis",

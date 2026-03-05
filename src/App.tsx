@@ -5,6 +5,7 @@ import { useSettingsStore } from "./stores/settings-store";
 import { autoUpdateExtensions } from "./lib/tauri";
 import { useLibraryStore, migrateFromLocalStorage } from "./stores/library-store";
 import Layout from "./components/ui/Layout";
+import { UpdateModal } from "./components/ui/UpdateModal";
 import Home from "./pages/Home";
 
 // lazy-loaded routes – keeps initial bundle small for faster first paint
@@ -70,6 +71,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <UpdateModal />
         <Suspense>
           <Routes>
             <Route element={<Layout />}>

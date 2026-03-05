@@ -3,6 +3,7 @@ import type { DownloadProgress } from "../types";
 
 interface RetryInfo {
   chapterId: string;
+  mangaId: string;
   mangaName: string;
   chapterNumber: string;
   chapterName: string;

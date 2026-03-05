@@ -123,6 +123,14 @@ export const en = {
     autoUpdateExtensions: "Auto-update extensions",
     autoUpdateExtensionsDesc: "Automatically check and install extension updates on app startup",
   },
+  updater: {
+    title: "New version available:",
+    updateNow: "Update",
+    later: "Later",
+    downloading: "Downloading...",
+    installing: "Installing update...",
+    installingHint: "The app will restart automatically.",
+  },
   common: {
     loading: "Loading...",
     error: "Error",

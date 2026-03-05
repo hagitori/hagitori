@@ -122,6 +122,14 @@ export const ptBr = {
     autoUpdateExtensions: "Atualização automática de extensões",
     autoUpdateExtensionsDesc: "Verifica e instala atualizações de extensões automaticamente ao abrir o app",
   },
+  updater: {
+    title: "Nova versão disponível:",
+    updateNow: "Atualizar",
+    later: "Depois",
+    downloading: "Baixando...",
+    installing: "Instalando atualização...",
+    installingHint: "O app vai reiniciar automaticamente.",
+  },
   common: {
     loading: "Carregando...",
     error: "Erro",
