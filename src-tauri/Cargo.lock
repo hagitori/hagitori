@@ -1996,7 +1996,7 @@ dependencies = [
 
 [[package]]
 name = "hagitori"
-version = "0.0.1-beta"
+version = "0.0.2-beta"
 dependencies = [
  "base64 0.22.1",
  "hagitori-browser",
@@ -2028,7 +2028,7 @@ dependencies = [
 
 [[package]]
 name = "hagitori-browser"
-version = "0.0.1-beta"
+version = "0.0.2-beta"
 dependencies = [
  "base64 0.22.1",
  "chromiumoxide",
@@ -2046,7 +2046,7 @@ dependencies = [
 
 [[package]]
 name = "hagitori-config"
-version = "0.0.1-beta"
+version = "0.0.2-beta"
 dependencies = [
  "chrono",
  "dirs",
@@ -2060,7 +2060,7 @@ dependencies = [
 
 [[package]]
 name = "hagitori-core"
-version = "0.0.1-beta"
+version = "0.0.2-beta"
 dependencies = [
  "async-trait",
  "serde",
@@ -2071,7 +2071,7 @@ dependencies = [
 
 [[package]]
 name = "hagitori-download"
-version = "0.0.1-beta"
+version = "0.0.2-beta"
 dependencies = [
  "base64 0.22.1",
  "hagitori-browser",
@@ -2087,7 +2087,7 @@ dependencies = [
 
 [[package]]
 name = "hagitori-extensions"
-version = "0.0.1-beta"
+version = "0.0.2-beta"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2113,7 +2113,7 @@ dependencies = [
 
 [[package]]
 name = "hagitori-grouper"
-version = "0.0.1-beta"
+version = "0.0.2-beta"
 dependencies = [
  "anyhow",
  "hagitori-core",
@@ -2127,7 +2127,7 @@ dependencies = [
 
 [[package]]
 name = "hagitori-http"
-version = "0.0.1-beta"
+version = "0.0.2-beta"
 dependencies = [
  "hagitori-core",
  "parking_lot",
@@ -2142,7 +2142,7 @@ dependencies = [
 
 [[package]]
 name = "hagitori-providers"
-version = "0.0.1-beta"
+version = "0.0.2-beta"
 dependencies = [
  "async-trait",
  "hagitori-browser",
@@ -2157,7 +2157,7 @@ dependencies = [
 
 [[package]]
 name = "hagitori-sync"
-version = "0.0.1-beta"
+version = "0.0.2-beta"
 dependencies = [
  "hagitori-config",
  "hagitori-core",
