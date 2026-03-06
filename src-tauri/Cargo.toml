@@ -52,7 +52,7 @@ wreq-util = "3.0.0-rc.10"
 chromiumoxide = { version = "0.9", default-features = false }
 fastrand = "2.3"
 
-rquickjs = { version = "0.11.0", features = ["futures", "parallel", "classes", "macro"] }
+rquickjs = { version = "0.11.0", features = ["futures", "parallel", "classes", "macro", "bindgen"] }
 
 scraper = "0.25.0"
 

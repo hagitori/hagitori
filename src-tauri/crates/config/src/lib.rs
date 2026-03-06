@@ -10,7 +10,7 @@ pub mod library_manager;
 pub mod session_store;
 
 pub use config_manager::ConfigManager;
-pub use database::data_dir;
+pub use database::{data_dir, set_data_dir_override};
 pub use extension_registry::ExtensionRegistry;
 pub use history::{DownloadHistory, DownloadRecord};
 pub use library_manager::{LibraryEntry, LibraryManager, SourceMeta};

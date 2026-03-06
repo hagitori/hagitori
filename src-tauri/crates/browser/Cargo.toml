@@ -6,7 +6,6 @@ edition.workspace = true
 [dependencies]
 hagitori-core.workspace = true
 hagitori-http.workspace = true
-chromiumoxide.workspace = true
 tokio.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
@@ -16,6 +15,9 @@ futures.workspace = true
 url.workspace = true
 base64.workspace = true
 tempfile.workspace = true
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+chromiumoxide.workspace = true
 
 [lints]
 workspace = true

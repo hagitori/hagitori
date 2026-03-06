@@ -20,7 +20,7 @@ export const ptBr = {
   },
   library: {
     title: "Biblioteca",
-    subtitle: "Suas obras salvas por extensão",
+    subtitle: "Todas as obras",
     empty: "Nenhuma obra salva",
     emptyHint: "Use a busca para adicionar mangás à biblioteca",
     mangaCount: "{count} obra(s)",

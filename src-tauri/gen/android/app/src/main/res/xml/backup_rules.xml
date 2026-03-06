@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <include domain="database" path="." />
+    <include domain="sharedpref" path="." />
+    <exclude domain="database" path="sessions.db" />
+    <exclude domain="file" path="browser_profile/" />
+</full-backup-content>

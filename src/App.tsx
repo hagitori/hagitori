@@ -6,6 +6,7 @@ import { autoUpdateExtensions } from "./lib/tauri";
 import { useLibraryStore, migrateFromLocalStorage } from "./stores/library-store";
 import Layout from "./components/ui/Layout";
 import { UpdateModal } from "./components/ui/UpdateModal";
+import { usePlatform } from "./hooks/usePlatform";
 import Home from "./pages/Home";
 
 // lazy-loaded routes – keeps initial bundle small for faster first paint
@@ -27,6 +28,8 @@ const queryClient = new QueryClient({
 });
 
 function App() {
+  const { isMobile } = usePlatform();
+
   // auto-update extension catalog (only if enabled in settings)
   useEffect(() => {
     async function startup() {
@@ -71,7 +74,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <UpdateModal />
+        {!isMobile && <UpdateModal />}
         <Suspense>
           <Routes>
             <Route element={<Layout />}>

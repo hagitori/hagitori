@@ -23,8 +23,12 @@ pub enum BrowserError {
     #[error("base64 decode failed: {0}")]
     Base64Decode(#[from] base64::DecodeError),
 
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     #[error(transparent)]
     Cdp(#[from] chromiumoxide::error::CdpError),
+
+    #[error("unsupported platform: {0}")]
+    UnsupportedPlatform(String),
 
     #[error(transparent)]
     Json(#[from] serde_json::Error),

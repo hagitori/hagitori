@@ -1,6 +1,7 @@
 //! opens SQLite databases and applies pending schema migrations.
 
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use rusqlite::Connection;
 use tracing::info;
@@ -136,6 +137,16 @@ CREATE TABLE IF NOT EXISTS extension_langs (
 ",
 )];
 
+static DATA_DIR_OVERRIDE: OnceLock<PathBuf> = OnceLock::new();
+
+/// sets a process-wide data directory override used by `data_dir()`.
+///
+/// this is useful on mobile platforms where the app host resolves the
+/// platform-specific app data directory.
+pub fn set_data_dir_override(path: PathBuf) {
+    let _ = DATA_DIR_OVERRIDE.set(path);
+}
+
 // ---------------------------------------------------------------------------
 // Migration runner
 // ---------------------------------------------------------------------------
@@ -185,6 +196,18 @@ fn apply_migrations(conn: &Connection, migrations: &[Migration]) -> Result<()> {
 
 /// returns the hagitori data directory, creating it if needed.
 pub fn data_dir() -> Result<PathBuf> {
+    if let Some(path) = DATA_DIR_OVERRIDE.get() {
+        if !path.exists() {
+            std::fs::create_dir_all(path).map_err(|e| {
+                HagitoriError::config(format!(
+                    "failed to create overridden data directory {}: {e}",
+                    path.display()
+                ))
+            })?;
+        }
+        return Ok(path.clone());
+    }
+
     let dir = dirs::config_dir()
         .ok_or_else(|| HagitoriError::config("unable to determine config directory"))?
         .join("hagitori");

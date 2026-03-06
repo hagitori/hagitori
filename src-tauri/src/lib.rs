@@ -81,18 +81,36 @@ pub fn run() {
         )
         .init();
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init());
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+
+    builder
         .setup(|app| {
             let http_client = Arc::new(
                 HttpClient::new().map_err(|e| format!("failed to create HttpClient: {e}"))?,
             );
 
+            #[cfg(target_os = "android")]
+            let data_dir = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| format!("failed to determine Android app data directory: {e}"))?;
+
+            #[cfg(not(target_os = "android"))]
             let data_dir = hagitori_config::data_dir()
                 .map_err(|e| format!("failed to determine data directory: {e}"))?;
+
+            if !data_dir.exists() {
+                std::fs::create_dir_all(&data_dir)
+                    .map_err(|e| format!("failed to create data directory {}: {e}", data_dir.display()))?;
+            }
+
+            hagitori_config::set_data_dir_override(data_dir.clone());
 
             let browser_profile_dir = data_dir.join("browser_profile");
             if !browser_profile_dir.exists() {

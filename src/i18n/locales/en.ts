@@ -20,10 +20,10 @@ export const en = {
   },
   library: {
     title: "Library",
-    subtitle: "Your saved sources by extension",
-    empty: "No saved sources",
+    subtitle: "All sources",
+    empty: "No saved manga",
     emptyHint: "Use search to add manga to your library",
-    mangaCount: "{count} source(s)",
+    mangaCount: "{count} manga",
     chapterCount: "{count} chapter(s)",
     lastUpdated: "Updated on",
   },
